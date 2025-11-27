@@ -9,6 +9,7 @@
 #include "Gamecommon.hpp"
 #include "Generator/WorldGenPipeline.h"
 
+class RedstoneSimulator;
 class BlockIterator;
 struct IntVec2;
 struct Vec3;
@@ -48,6 +49,7 @@ public:
     Chunk* GetChunkFromPlayerCameraPosition(Vec3 cameraPos);
     Chunk* GetChunk(int chunkX, int chunkY);
     Block GetBlockAtWorldCoords(int worldX, int worldY, int worldZ);
+    bool CanConnectToRedstone(const IntVec3& globalPos);
 
     void ActivateProcessedChunk(Chunk* chunk);
     
@@ -69,6 +71,11 @@ public:
     float CalculateGlowstoneFlicker() const;
 
     GameRaycastResult3D RaycastVsBlocks(const Vec3& start, const Vec3& direction, float maxDistance);
+
+    //redstone
+    void HandleBlockInteraction(const BlockIterator& block);
+    void OnBlockPlaced(const BlockIterator& block);
+    void OnBlockRemoved(const BlockIterator& block, uint8_t oldType);
 
     void ToggleDebugMode();
     void ToggleDebugPrintingMode();
@@ -113,6 +120,9 @@ public:
     bool m_hasDirtyChunk = false;
 
     BlockHighlight m_highlightedBlock;
+
+    //redstone
+    RedstoneSimulator* m_redstoneSimulator = nullptr;
 
     Shader* m_worldShader = nullptr;
     ConstantBuffer* m_worldConstantBuffer = nullptr;

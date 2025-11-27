@@ -4,7 +4,17 @@
 #include "Engine/Core/Rgba8.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 
-enum Direction : uint8_t;
+enum Direction : uint8_t
+{
+	DIRECTION_EAST,   // +X
+	DIRECTION_WEST,   // -X
+	DIRECTION_NORTH,  // +Y
+	DIRECTION_SOUTH,  // -Y
+	DIRECTION_UP,     // +Z
+	DIRECTION_DOWN,   // -Z
+	NUM_DIRECTIONS
+};
+
 void DebugDrawRing( Vec2 const& center, float radius, float thickness, Rgba8 const& color );
 void DebugDrawLine( Vec2 const& start, Vec2 const& end, Rgba8 color, float thickness );
 
@@ -68,6 +78,7 @@ constexpr uint8_t BLOCK_BIT_IS_LIGHT_DIRTY = 0x02;  // 第1位
 constexpr uint8_t BLOCK_BIT_IS_OPAQUE      = 0x04;  // 第2位
 constexpr uint8_t BLOCK_BIT_IS_SOLID       = 0x08;  // 第3位
 constexpr uint8_t BLOCK_BIT_IS_VISIBLE     = 0x10;  // 第4位
+constexpr uint8_t BLOCK_BIT_IS_REDSTONE_DIRTY = 0x20; 
 
 enum BlockType : uint8_t
 {
@@ -105,6 +116,38 @@ enum BlockType : uint8_t
 	BLOCK_TYPE_SPRUCE_PLANKS,
 	BLOCK_TYPE_SPRUCE_LEAVES,
 	BLOCK_TYPE_SPRUCE_LEAVES_SNOW,
+
+	BLOCK_TYPE_REDSTONE_WIRE_DOT = 46,
+	BLOCK_TYPE_REDSTONE_WIRE_NS = 47,
+	BLOCK_TYPE_REDSTONE_WIRE_EW = 48,
+	BLOCK_TYPE_REDSTONE_WIRE_CORNER = 49,
+	BLOCK_TYPE_REDSTONE_WIRE_CROSS = 50,
+	BLOCK_TYPE_REDSTONE_TORCH = 51,
+	BLOCK_TYPE_REDSTONE_TORCH_OFF = 52,
+	BLOCK_TYPE_REDSTONE_BLOCK = 53,
+	BLOCK_TYPE_REDSTONE_LAMP = 54,
+	BLOCK_TYPE_REDSTONE_LAMP_ON = 55,
+    
+	BLOCK_TYPE_REPEATER = 56,
+	BLOCK_TYPE_REPEATER_ON = 57,
+    
+	BLOCK_TYPE_LEVER = 58,
+	BLOCK_TYPE_BUTTON_STONE = 59,
+	BLOCK_TYPE_BUTTON_WOOD = 60,
+	BLOCK_TYPE_PRESSURE_PLATE_STONE = 61,
+	BLOCK_TYPE_PRESSURE_PLATE_WOOD = 62,
+    
+	BLOCK_TYPE_PISTON = 63,
+	BLOCK_TYPE_STICKY_PISTON = 64,
+	BLOCK_TYPE_PISTON_HEAD = 65,
+    
+	BLOCK_TYPE_OBSERVER = 66,
+	BLOCK_TYPE_DROPPER = 67,
+	BLOCK_TYPE_DISPENSER = 68,
+	BLOCK_TYPE_HOPPER = 69,
+    
+	BLOCK_TYPE_TNT = 70,
+	BLOCK_TYPE_NOTE_BLOCK = 71,
     NUM_BLOCK_TYPES
 };
 

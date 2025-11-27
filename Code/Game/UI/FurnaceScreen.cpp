@@ -87,7 +87,7 @@ void FurnaceScreen::BuildFurnaceSlots()
     
     // 熔炉图标（装饰）
     TextSetting iconSetting;
-    iconSetting.m_text = "🔥";  // 或者用图片
+    iconSetting.m_text = "";  // 或者用图片
     iconSetting.m_color = Rgba8(255, 140, 0);
     iconSetting.m_height = 32.0f;
     

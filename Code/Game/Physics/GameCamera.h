@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <string>
 
+#include "PhysicsUtils.h"
 #include "Engine/Math/Vec3.hpp"
 #include "Engine/Math/EulerAngles.hpp"
 #include "Engine/Renderer/Camera.hpp"
@@ -64,7 +65,7 @@ private:
 	Vec3 m_shakeOffset = Vec3();
 	
 	// Third person settings
-	float m_overShoulderDistance = 4.0f;
+	float m_overShoulderDistance = CAMERA_OVER_SHOULDER_DIST;
 	Vec3 m_overShoulderOffset = Vec3(0.0f, 0.0f, 0.5f); // Pivot offset from entity position
 	float m_minOverShoulderDistance = 0.5f;
 	

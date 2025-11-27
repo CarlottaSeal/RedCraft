@@ -11,6 +11,7 @@
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/VertexBuffer.hpp"
 #include "Engine/Save/SaveSystem.h"
+#include "Gameplay/RedstoneSimulator.h"
 #include "Generator/WorldGenPipeline.h"
 #include "ThirdParty/Noise/SmoothNoise.hpp"
 #include "ThirdParty/Noise/RawNoise.hpp"
@@ -359,6 +360,11 @@ Chunk* Chunk::GetNeighbor(Direction dir) const
     }
 }
 
+void Chunk::MarkSelfDirty()
+{
+    m_isDirty = true;
+}
+
 void Chunk::MarkNeighborChunkDirty(Direction dir)
 {
     if (dir == DIRECTION_UP || dir == DIRECTION_DOWN)
@@ -416,12 +422,10 @@ void Chunk::DigBlock(const IntVec3& localCoords)
     Block* block = iter.GetBlock();
     if (!CanDigBlock(block->m_typeIndex))
         return;
+
+    uint8_t oldType = block->m_typeIndex;
     
     block->SetType(BLOCK_TYPE_AIR);
-    //block->SetIsOpaque(false);
-    //block->SetIsSolid(false);
-    //block->SetIsVisible(false);
-    
     m_world->MarkLightingDirty(iter);
     
     BlockIterator above = iter.GetNeighborCrossBoundary(DIRECTION_UP);
@@ -473,6 +477,8 @@ void Chunk::DigBlock(const IntVec3& localCoords)
     
     GenerateMesh();
     m_needsSaving = true;
+
+    m_world->OnBlockRemoved(iter, oldType);
 }
 
 void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
@@ -482,7 +488,6 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
         return;
 
     Block* block = iter.GetBlock();
-    
     if (block->m_typeIndex != BLOCK_TYPE_AIR && 
         block->m_typeIndex != BLOCK_TYPE_WATER &&
         block->m_typeIndex != BLOCK_TYPE_LAVA)
@@ -494,14 +499,60 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
     }
 
     bool wasSky = block->IsSky();
-    
-    //const BlockDefinition& blockDef = BlockDefinition::GetBlockDef(blockType);
-    
     block->SetType(blockType);
-    //block->SetIsOpaque(blockDef.m_isOpaque);
-    //block->SetIsSolid(blockDef.m_isSolid);
-    //block->SetIsVisible(blockDef.m_isVisible);
+
+    Direction playerFacing = m_game->m_player->GetOrthoDirection();
+    if (blockType == BLOCK_TYPE_PISTON ||
+        blockType == BLOCK_TYPE_STICKY_PISTON ||
+        blockType == BLOCK_TYPE_OBSERVER ||
+        blockType == BLOCK_TYPE_DISPENSER ||
+        blockType == BLOCK_TYPE_DROPPER)
+    {
+        // 这些方块：朝向玩家看的方向（6方向）
+        block->SetBlockFacing((uint8_t)playerFacing);
+    }
+    else if (blockType == BLOCK_TYPE_REPEATER_OFF ||
+             blockType == BLOCK_TYPE_REPEATER_ON)
+    {
+        // 中继器：信号输出方向 = 玩家看的方向（只用水平4方向）
+        Direction horizontal = m_game->m_player->GetHorizontalDirection();
+        block->SetBlockFacing((uint8_t)horizontal);
+        block->SetRepeaterDelay(1);  // 默认1档延迟
+    }
+    else if (blockType == BLOCK_TYPE_COMPARATOR_OFF ||
+             blockType == BLOCK_TYPE_COMPARATOR_ON)
+    {
+        // 比较器：同中继器
+        Direction horizontal = GetHorizontalDirection(playerFacing);
+        block->SetBlockFacing((uint8_t)horizontal);
+        block->SetComparatorMode(0);  // 默认比较模式
+    }
+    else if (blockType == BLOCK_TYPE_LEVER)
+    {
+        // 拉杆：附着在地面，朝上
+        block->SetBlockFacing((uint8_t)DIRECTION_UP);
+        block->SetLeverState(false);
+    }
+    else if (blockType == BLOCK_TYPE_BUTTON_STONE ||
+             blockType == BLOCK_TYPE_BUTTON_WOOD)
+    {
+        // 按钮：附着在地面
+        block->SetBlockFacing((uint8_t)DIRECTION_UP);
+        block->SetButtonPressed(false);
+    }
+    else if (blockType == BLOCK_TYPE_REDSTONE_TORCH)
+    {
+        // 红石火把：放在地上
+        block->SetBlockFacing((uint8_t)DIRECTION_UP);
+    }
+    else if (IsRedstoneWire(blockType))
+    {
+        // 红石线：初始化为DOT，后续会自动更新连接
+        block->SetType(BLOCK_TYPE_REDSTONE_WIRE_DOT);
+        block->SetRedstonePower(0);
+    }
     
+    //light deal
     // 1. 标记该方块光照为脏
     m_world->MarkLightingDirty(iter);
     
@@ -568,6 +619,12 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
     
     GenerateMesh();
     m_needsSaving = true;
+    
+    m_world->OnBlockPlaced(iter);
+    if (IsRedstoneWire(blockType))
+    {
+        UpdateRedstoneWireConnections(globalCoords);
+    }
 }
 
 IntVec3 Chunk::FindDigTarget(const Vec3& worldPos)
@@ -992,6 +1049,121 @@ void Chunk::AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blo
     m_indices.push_back((unsigned int)(startVertIndex + 0));
     m_indices.push_back((unsigned int)(startVertIndex + 2));
     m_indices.push_back((unsigned int)(startVertIndex + 3));
+}
+
+void Chunk::AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_PCU>& verts)
+{
+    Block* wire = block.GetBlock();
+    if (!wire || wire->m_typeIndex != BLOCK_TYPE_REDSTONE_WIRE)
+        return;
+    
+    // 获取世界坐标
+    Vec3 worldPos = Vec3(
+        (float)block.GetGlobalCoords().x,
+        (float)block.GetGlobalCoords().y,
+        (float)block.GetGlobalCoords().z
+    );
+    
+    // 获取颜色
+    uint8_t power = wire->GetRedstonePower();
+    Rgba8 color = GetRedstoneWireColor(power);
+    
+    // 红石线高度偏移（避免z-fighting）
+    float wireHeight = 0.02f;
+    
+    // 获取连接状态
+    WireConnections conn = m_world->GetRedstoneSimulator()->GetWireConnections(block);
+    
+    // 根据连接状态选择纹理
+    uint8_t texIndex = conn.GetTextureIndex();
+    Vec2 uvMin, uvMax;
+    GetRedstoneWireUVs(texIndex, uvMin, uvMax);
+    
+    // ===== 渲染主体（顶面） =====
+    float x0 = worldPos.x;
+    float y0 = worldPos.y;
+    float z0 = worldPos.z + wireHeight;
+    float x1 = worldPos.x + 1.0f;
+    float y1 = worldPos.y + 1.0f;
+    
+    // 顶面四个顶点
+    verts.push_back(Vertex_PCU(Vec3(x0, y0, z0), color, Vec2(uvMin.x, uvMin.y)));
+    verts.push_back(Vertex_PCU(Vec3(x1, y0, z0), color, Vec2(uvMax.x, uvMin.y)));
+    verts.push_back(Vertex_PCU(Vec3(x1, y1, z0), color, Vec2(uvMax.x, uvMax.y)));
+    
+    verts.push_back(Vertex_PCU(Vec3(x0, y0, z0), color, Vec2(uvMin.x, uvMin.y)));
+    verts.push_back(Vertex_PCU(Vec3(x1, y1, z0), color, Vec2(uvMax.x, uvMax.y)));
+    verts.push_back(Vertex_PCU(Vec3(x0, y1, z0), color, Vec2(uvMin.x, uvMax.y)));
+    
+    // ===== 渲染爬升部分 =====
+    // 北边向上
+    if (conn.north == WireConnection::UP)
+    {
+        AddWireClimbingFace(verts, worldPos, DIRECTION_NORTH, color, uvMin, uvMax);
+    }
+    // 南边向上
+    if (conn.south == WireConnection::UP)
+    {
+        AddWireClimbingFace(verts, worldPos, DIRECTION_SOUTH, color, uvMin, uvMax);
+    }
+    // 东边向上
+    if (conn.east == WireConnection::UP)
+    {
+        AddWireClimbingFace(verts, worldPos, DIRECTION_EAST, color, uvMin, uvMax);
+    }
+    // 西边向上
+    if (conn.west == WireConnection::UP)
+    {
+        AddWireClimbingFace(verts, worldPos, DIRECTION_WEST, color, uvMin, uvMax);
+    }
+}
+
+void Chunk::AddWireClimbingFace(std::vector<Vertex_PCU>& verts, const Vec3& basePos, Direction climbDir,
+    const Rgba8& color, const Vec2& uvMin, const Vec2& uvMax)
+{
+    float offset = 0.02f;  // 避免z-fighting
+    Vec3 p0, p1, p2, p3;
+    
+    switch (climbDir)
+    {
+    case DIRECTION_NORTH:
+        p0 = basePos + Vec3(0, 0, offset);
+        p1 = basePos + Vec3(1, 0, offset);
+        p2 = basePos + Vec3(1, 0, 1 + offset);
+        p3 = basePos + Vec3(0, 0, 1 + offset);
+        break;
+        
+    case DIRECTION_SOUTH:
+        p0 = basePos + Vec3(0, 1, offset);
+        p1 = basePos + Vec3(1, 1, offset);
+        p2 = basePos + Vec3(1, 1, 1 + offset);
+        p3 = basePos + Vec3(0, 1, 1 + offset);
+        break;
+        
+    case DIRECTION_EAST:
+        p0 = basePos + Vec3(1, 0, offset);
+        p1 = basePos + Vec3(1, 1, offset);
+        p2 = basePos + Vec3(1, 1, 1 + offset);
+        p3 = basePos + Vec3(1, 0, 1 + offset);
+        break;
+        
+    case DIRECTION_WEST:
+        p0 = basePos + Vec3(0, 0, offset);
+        p1 = basePos + Vec3(0, 1, offset);
+        p2 = basePos + Vec3(0, 1, 1 + offset);
+        p3 = basePos + Vec3(0, 0, 1 + offset);
+        break;
+        
+    default:
+        return;
+    }
+    verts.push_back(Vertex_PCU(p0, color, Vec2(uvMin.x, uvMin.y)));
+    verts.push_back(Vertex_PCU(p1, color, Vec2(uvMax.x, uvMin.y)));
+    verts.push_back(Vertex_PCU(p2, color, Vec2(uvMax.x, uvMax.y)));
+    
+    verts.push_back(Vertex_PCU(p0, color, Vec2(uvMin.x, uvMin.y)));
+    verts.push_back(Vertex_PCU(p2, color, Vec2(uvMax.x, uvMax.y)));
+    verts.push_back(Vertex_PCU(p3, color, Vec2(uvMin.x, uvMax.y)));
 }
 
 const int* Chunk::GetFaceIndices(Direction direction)

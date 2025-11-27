@@ -12,6 +12,7 @@
 #include "Engine/Core/VertexUtils.hpp"
 #include "Engine/Math/IntVec2.hpp"
 #include "Engine/Renderer/ConstantBuffer.hpp"
+#include "Gameplay/RedstoneSimulator.h"
 #include "ThirdParty/Noise/SmoothNoise.hpp"
 
 World::World(Game* owner)
@@ -21,6 +22,8 @@ World::World(Game* owner)
 
     m_worldConstantBuffer = g_theRenderer->CreateConstantBuffer(sizeof(WorldConstants));
     m_worldShader = g_theRenderer->CreateOrGetShader("Data/Shaders/WorldShader", VertexType::VERTEX_PCUTBN);
+
+    m_redstoneSimulator = new RedstoneSimulator(this);
 }
 
 World::~World()
@@ -35,6 +38,12 @@ World::~World()
 		chunk = nullptr;
 	}
     delete m_worldGenPipeline;
+
+    if (m_redstoneSimulator)
+    {
+        delete m_redstoneSimulator;
+        m_redstoneSimulator = nullptr;
+    }
 }
 
 void World::Update(float deltaSeconds)
@@ -81,6 +90,11 @@ void World::Update(float deltaSeconds)
     UpdateDayNightCycle(deltaSeconds);
     UpdateWorldConstants();
     ProcessDirtyLighting();
+
+    if (m_redstoneSimulator)
+    {
+        m_redstoneSimulator->Update(deltaSeconds);
+    }
     
     RebuildDirtyMeshes(2);
 }
@@ -298,6 +312,22 @@ Block World::GetBlockAtWorldCoords(int worldX, int worldY, int worldZ)
     }
 
     return ch->GetBlock(localX, localY, localZ);
+}
+
+bool World::CanConnectToRedstone(const IntVec3& globalPos)
+{
+    Block block = GetBlockAtWorldCoords(globalPos.x, globalPos.y, globalPos.z);
+    
+    uint8_t type = block.m_typeIndex;
+    
+    // 红石线可以连接到：
+    // 1. 其他红石线
+    // 2. 红石组件（火把、中继器、比较器等）
+    // 3. 被充能的方块（可选，简化版可以不要）
+    
+    return IsRedstoneWire(type) ||
+           IsRedstoneComponent(type) ||
+           type == BLOCK_TYPE_REDSTONE_BLOCK;
 }
 
 IntVec2 World::WorldToChunkXY(const Vec3& worldPos)
@@ -913,6 +943,64 @@ GameRaycastResult3D World::RaycastVsBlocks(const Vec3& start, const Vec3& direct
     }
     
     return result;
+}
+
+void World::HandleBlockInteraction(const BlockIterator& block)
+{
+    if (!block.IsValid())
+        return;
+    
+    Block* b = block.GetBlock();
+    if (!b)
+        return;
+    
+    switch (b->m_typeIndex)
+    {
+    case BLOCK_TYPE_LEVER:
+        m_redstoneSimulator->ToggleLever(block);
+        break;
+        
+    case BLOCK_TYPE_BUTTON_STONE:
+    case BLOCK_TYPE_BUTTON_WOOD:
+        m_redstoneSimulator->PressButton(block);
+        break;
+        
+    case BLOCK_TYPE_REPEATER:
+    case BLOCK_TYPE_REPEATER_ON:
+        m_redstoneSimulator->CycleRepeaterDelay(block);
+        break;
+        
+        // 活塞不需要右键交互
+        // 红石块不需要交互
+        
+    default:
+        break;
+    }
+}
+
+void World::OnBlockPlaced(const BlockIterator& block)
+{
+    if (!block.IsValid())
+        return;
+    
+    Block* b = block.GetBlock();
+    if (!b)
+        return;
+    
+    if (IsRedstoneComponent(b->m_typeIndex) || IsRedstonePowerable(b->m_typeIndex))
+    {
+        if (m_redstoneSimulator)
+            m_redstoneSimulator->OnBlockPlaced(block);
+    }
+}
+
+void World::OnBlockRemoved(const BlockIterator& block, uint8_t oldType)
+{
+    if (IsRedstoneComponent(oldType) || IsRedstonePowerable(oldType))
+    {
+        if (m_redstoneSimulator)
+            m_redstoneSimulator->OnBlockRemoved(block, oldType);
+    }
 }
 
 bool World::RegenerateSingleNearestDirtyChunk()
@@ -1572,7 +1660,32 @@ void World::UpdateDiggingAndPlacing(float deltaSeconds)
         //if (m_currentRaycast.m_didImpact)
         if (m_highlightedBlock.m_isValid)
         {
-            //DebuggerPrintf("Impacted! Placing");
+            Block* targetBlock = m_currentRaycast.m_hitBlock.GetBlock();
+            
+            if (targetBlock)
+            {
+                uint8_t blockType = targetBlock->m_typeIndex;
+                
+                // 红石组件交互
+                if (blockType == BLOCK_TYPE_LEVER)
+                {
+                    m_redstoneSimulator->ToggleLever(m_currentRaycast.m_hitBlock);
+                    return;  // 不放置方块
+                }
+                else if (blockType == BLOCK_TYPE_BUTTON_STONE || 
+                         blockType == BLOCK_TYPE_BUTTON_WOOD)
+                {
+                    m_redstoneSimulator->PressButton(m_currentRaycast.m_hitBlock);
+                    return;
+                }
+                else if (blockType == BLOCK_TYPE_REPEATER ||
+                         blockType == BLOCK_TYPE_REPEATER_ON)
+                {
+                    m_redstoneSimulator->CycleRepeaterDelay(m_currentRaycast.m_hitBlock);
+                    return;
+                }
+            }
+            
             BlockIterator placeIter = m_currentRaycast.m_hitBlock.GetNeighborCrossBoundary(m_currentRaycast.m_hitFace);
         
             if (placeIter.IsValid())

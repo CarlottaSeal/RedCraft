@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "PhysicsUtils.h"
 #include "Engine/Math/Vec3.hpp"
 #include "Engine/Math/EulerAngles.hpp"
 #include "Engine/Math/AABB3.hpp"
@@ -60,30 +61,26 @@ public:
 	void SetPhysicsMode(PhysicsMode mode) { m_physicsMode = mode; }
 
 public:
-	// Core properties
 	Game* m_game = nullptr;
 	Vec3 m_position;
 	Vec3 m_velocity;
 	EulerAngles m_orientation;
 	
-	// Physics body - 使用PhysicsUtils.h中的常量
-	AABB3 m_physicsBody;  // Local space AABB
-	float m_physicsHeight = 1.80f;     // PLAYER_HEIGHT from PhysicsUtils
-	float m_physicsRadius = 0.30f;     // PLAYER_WIDTH / 2
-	float m_eyeHeight = 1.62f;         // PLAYER_EYE_HEIGHT from PhysicsUtils
+	AABB3 m_physicsBody; 
+	float m_physicsHeight = PLAYER_HEIGHT;     
+	float m_physicsRadius = PLAYER_WIDTH * 0.5f;   
+	float m_eyeHeight = PLAYER_EYE_HEIGHT;      
 	
-	// Physics state
 	PhysicsMode m_physicsMode = PhysicsMode::FLYING;
 	bool m_isOnGround = false;
 	
-	// Physics constants - 从PhysicsUtils.h导入
-	float m_walkSpeed = 4.3f;          // WALK_SPEED
-	float m_runSpeed = 5.6f;           // RUN_SPEED  
-	float m_flySpeed = 10.9f;          // FLY_SPEED
-	float m_jumpSpeed = 8.0f;          // JUMP_VELOCITY
-	float m_acceleration = 40.0f;      // 加速度
-	float m_groundFriction = 15.0f;    // 地面摩擦
-	float m_airFriction = 2.0f;        // 空中摩擦
+	float m_walkSpeed = WALK_SPEED;       
+	float m_runSpeed = RUN_SPEED;        
+	float m_flySpeed = FLY_SPEED;         
+	float m_jumpSpeed = JUMP_VELOCITY;          
+	float m_acceleration = GROUND_ACCELERATION;    
+	float m_groundFriction = GROUND_DRAG;    
+	float m_airFriction = AIR_DRAG;        
 	
 	// Rendering
 	bool m_isVisible = true;

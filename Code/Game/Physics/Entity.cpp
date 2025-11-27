@@ -92,14 +92,13 @@ void Entity::UpdateWalkingPhysics(float deltaSeconds)
 	// 使用PhysicsUtils中的GRAVITY常量
 	m_velocity.z += GRAVITY * deltaSeconds;
 	
-	// 限制终端速度
 	if (m_velocity.z < TERMINAL_VELOCITY)
 	{
 		m_velocity.z = TERMINAL_VELOCITY;
 	}
 	
 	// 使用PhysicsUtils中的ApplyFriction函数
-	float friction = m_isOnGround ? 8.0f : 0.5f;
+	float friction = m_isOnGround ? m_groundFriction : m_airFriction;
 	m_velocity = ApplyFriction(m_velocity, friction, deltaSeconds);
 	
 	// Apply velocity and resolve collisions
@@ -114,7 +113,7 @@ void Entity::UpdateFlyingPhysics(float deltaSeconds)
 	// No gravity in flying mode
 	
 	// Apply friction (similar to air friction)
-	m_velocity = ApplyFriction(m_velocity, 2.0f, deltaSeconds);
+	m_velocity = ApplyFriction(m_velocity, m_airFriction, deltaSeconds);
 	
 	// Apply velocity and resolve collisions
 	ResolveWorldCollisions(deltaSeconds);
@@ -180,7 +179,7 @@ void Entity::Jump()
 {
 	if (m_physicsMode == PhysicsMode::WALKING && m_isOnGround)
 	{
-		m_velocity.z = m_jumpSpeed; // 使用PhysicsUtils中的JUMP_VELOCITY
+		m_velocity.z = m_jumpSpeed;
 		m_isOnGround = false;
 	}
 }
@@ -410,14 +409,16 @@ AABB3 Entity::GetPhysicsBounds() const
 
 Vec3 Entity::GetForwardVector() const
 {
-	float yawRadians = m_orientation.m_yawDegrees * (3.14159265f / 180.0f);
-	float pitchRadians = m_orientation.m_pitchDegrees * (3.14159265f / 180.0f);
-	
-	float cosPitch = cosf(pitchRadians);
-	Vec3 forward;
-	forward.x = cosPitch * cosf(yawRadians);
-	forward.y = cosPitch * sinf(yawRadians);
-	forward.z = -sinf(pitchRadians);
+	Vec3 forward, left, up;
+	m_orientation.GetAsVectors_IFwd_JLeft_KUp(forward, left, up);
+	// float yawRadians = m_orientation.m_yawDegrees * (3.14159265f / 180.0f);
+	// float pitchRadians = m_orientation.m_pitchDegrees * (3.14159265f / 180.0f);
+	//
+	// float cosPitch = cosf(pitchRadians);
+	// Vec3 forward;
+	// forward.x = cosPitch * cosf(yawRadians);
+	// forward.y = cosPitch * sinf(yawRadians);
+	// forward.z = -sinf(pitchRadians);
 	
 	return forward;
 }

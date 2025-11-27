@@ -1,4 +1,5 @@
 #pragma once
+#include "Gamecommon.hpp"
 #include "Physics/Entity.h"
 #include "Physics/GameCamera.h"
 #include "Engine/Renderer/Camera.hpp"
@@ -20,6 +21,10 @@ public:
 	
     void CyclePhysicsMode();
     void CycleCameraMode();
+
+	Direction GetOrthoDirection();
+	Direction GetHorizontalDirection();
+	Direction GetOrthoDirectionOpposite();
 	
     // Camera
     GameCamera* GetGameCamera() { return m_gameCamera; }

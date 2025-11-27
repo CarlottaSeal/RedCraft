@@ -4,6 +4,7 @@
 #include "Engine/Math/IntVec3.h"
 #include "Engine/Math/Vec3.hpp"
 
+class Block;
 // local~index
 int LocalCoordsToIndex(const IntVec3& localCoords);
 int LocalCoordsToIndex(int x, int y, int z);
@@ -21,6 +22,8 @@ IntVec3 GlobalCoordsToLocalCoords(const IntVec3& globalCoords);
 IntVec3 GetGlobalCoords(const IntVec2& chunkCoords, int blockIndex);
 IntVec3 GetGlobalCoords(const IntVec2& chunkCoords, const IntVec3& localCoords);
 IntVec3 GetGlobalCoords(const Vec3& position);
+uint8_t GetAttachmentFacingValue(Direction attachDir);
+Rgba8 GetRedstoneWireColor(uint8_t power);
 
 // block
 bool IsSolid(uint8_t type);
@@ -28,5 +31,14 @@ bool IsLiquid(uint8_t type);
 bool IsFoliage(uint8_t type);
 bool IsLog(uint8_t type);
 bool IsSnow(uint8_t type);
+bool IsOpaque(uint8_t type);
 bool IsNonGroundCover(uint8_t type);
+bool IsRedstoneComponent(uint8_t blockType);
+bool IsRedstonePowerSource(uint8_t blockType);
+bool IsRedstoneConductor(uint8_t blockType);
+bool IsRedstoneWire(uint8_t blockType);
+bool IsRedstonePowerable(uint8_t blockType);
+
+void GetPerpendicularDirectionsForLeftAndRight(Direction facing, 
+    Direction& leftDir, Direction& rightDir);
 

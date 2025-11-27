@@ -47,10 +47,8 @@ Player::~Player()
 
 void Player::Update(float deltaSeconds)
 {
-	// Update input first
 	UpdateInput(deltaSeconds);
 	
-	// Then update physics (from Entity)
 	Entity::Update(deltaSeconds);
 	
 	// Update game camera
@@ -246,5 +244,70 @@ void Player::CycleCameraMode()
 	if (m_gameCamera)
 	{
 		m_gameCamera->CycleCameraMode();
+	}
+}
+
+Direction Player::GetOrthoDirection()
+{
+	Vec3 forward = GetForwardVector();
+	float absX = fabsf(forward.x);
+	float absY = fabsf(forward.y);
+	float absZ = fabsf(forward.z);
+    
+	if (absZ > absX && absZ > absY)
+	{
+		// 上下方向占主导
+		return (forward.z >= 0.0f) ? DIRECTION_UP : DIRECTION_DOWN;
+	}
+	else if (absX > absY)
+	{
+		return (forward.x >= 0.0f) ? DIRECTION_EAST : DIRECTION_WEST;
+	}
+	else
+	{
+		return (forward.y >= 0.0f) ? DIRECTION_NORTH : DIRECTION_SOUTH;
+	}
+}
+
+Direction Player::GetHorizontalDirection()
+{
+	Vec3 forward = GetForwardVector();
+
+	forward.z = 0.0f;
+	if (forward.GetLengthSquared() < 1e-6f)
+	{
+		return DIRECTION_NORTH;
+	}
+
+	forward = forward.GetNormalized();
+	float absX = fabsf(forward.x);
+	float absY = fabsf(forward.y);
+	if (absX > absY)
+	{
+		return (forward.x >= 0.0f) ? DIRECTION_EAST : DIRECTION_WEST;
+	}
+	else
+	{
+		return (forward.y >= 0.0f) ? DIRECTION_NORTH : DIRECTION_SOUTH;
+	}
+}
+
+Direction Player::GetOrthoDirectionOpposite()
+{
+	Direction ortho = GetOrthoDirection();
+	switch (ortho)
+	{
+		case DIRECTION_NORTH:
+		return DIRECTION_SOUTH;
+		case DIRECTION_SOUTH:
+		return DIRECTION_NORTH;
+		case DIRECTION_EAST:
+		return DIRECTION_WEST;
+		case DIRECTION_WEST:
+		return DIRECTION_EAST;
+	case DIRECTION_UP:
+		return DIRECTION_DOWN;
+		default:
+		return DIRECTION_UP;
 	}
 }

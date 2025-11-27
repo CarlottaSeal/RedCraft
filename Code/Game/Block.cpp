@@ -87,4 +87,59 @@ void Block::SetIsVisible(bool isVisible)
     else
         m_flags &= ~BLOCK_BIT_IS_VISIBLE;
 }
-    
+
+void Block::SetSpecialState(bool state)
+{
+    if (state) m_redstoneData |= 0x80;
+    else m_redstoneData &= ~0x80;
+}
+
+Direction Block::GetPistonFacing()
+{
+    return (Direction)GetBlockFacing();
+}
+
+bool Block::IsPistonExtended()
+{
+    return GetSpecialState();
+}
+
+void Block::SetPistonExtended(bool extended)
+{
+    SetSpecialState(extended);
+}
+
+bool Block::IsStickyPistonHead()
+{
+    return (GetRedstonePower() & 0x08) != 0;
+};
+
+uint8_t Block::GetRepeaterDelay()
+{
+    // 返回 1-4 tick
+    return (GetRedstonePower() & 0x03) + 1;
+}
+
+void Block::SetRepeaterDelay(uint8_t delay)
+{
+    // delay: 1-4
+    delay = (delay < 1) ? 1 : (delay > 4) ? 4 : delay;
+    uint8_t power = GetRedstonePower();
+    power = (power & 0xFC) | ((delay - 1) & 0x03);
+    SetRedstonePower(power);
+}
+
+bool Block::IsRepeaterLocked()
+{
+    return (GetRedstonePower() & 0x04) != 0;
+}
+
+void Block::SetRepeaterLocked(bool locked)
+{
+    uint8_t power = GetRedstonePower();
+    if (locked)
+        power |= 0x04;
+    else
+        power &= ~0x04;
+    SetRedstonePower(power);
+}

@@ -5,7 +5,17 @@
     <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugInline|Win32'">
+    <LocalDebuggerCommand>$(TargetFileName)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LocalDebuggerCommand>$(TargetFileName)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastBreak|Win32'">
     <LocalDebuggerCommand>$(TargetFileName)</LocalDebuggerCommand>
     <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
@@ -15,7 +25,17 @@
     <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugInline|x64'">
+    <LocalDebuggerCommand>$(TargetFileName)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LocalDebuggerCommand>$(TargetFileName)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastBreak|x64'">
     <LocalDebuggerCommand>$(TargetFileName)</LocalDebuggerCommand>
     <LocalDebuggerWorkingDirectory>$(SolutionDir)Run/</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>

@@ -59,7 +59,8 @@ public:
     
     void SetNeighbor(Direction dir, Chunk* neighbor);
     Chunk* GetNeighbor(Direction dir) const;
-    
+
+    void MarkSelfDirty();
     void MarkNeighborChunkDirty(Direction dir);
     bool IsOnBoundary(const IntVec3& localCoords, Direction dir) const;
 
@@ -92,6 +93,9 @@ protected:
     void GenerateDebug();
     bool ShouldRenderFace(const BlockIterator& iter, Direction direction);
     void AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blockDef, Direction direction);
+    void AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_PCU>& verts);
+    void AddWireClimbingFace(std::vector<Vertex_PCU>& verts,const Vec3& basePos,Direction climbDir,const Rgba8& color,
+        const Vec2& uvMin,const Vec2& uvMax);
     const int* GetFaceIndices(Direction direction);
     IntVec3 GetNeighborBlockCoords(const IntVec3& localCoords, Direction dir);
     void UpdateVBOIBO();

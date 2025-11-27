@@ -1,6 +1,8 @@
 ﻿#include "ChunkUtils.h"
 #include <cmath>
 
+#include "Block.h"
+
 int LocalCoordsToIndex(const IntVec3& localCoords)
 {
     return localCoords.x | (localCoords.y << CHUNK_BITS_X) | (localCoords.z << CHUNK_BITS_XY);
@@ -102,6 +104,31 @@ IntVec3 GetGlobalCoords(const Vec3& position)
     return IntVec3(globalX, globalY, globalZ);
 }
 
+uint8_t GetAttachmentFacingValue(Direction attachDir)
+{
+	switch (attachDir)
+	{
+	case DIRECTION_DOWN:  return 0;
+	case DIRECTION_UP:    return 1;
+	case DIRECTION_NORTH: return 2;
+	case DIRECTION_SOUTH: return 3;
+	case DIRECTION_EAST:  return 4;
+	case DIRECTION_WEST:  return 5;
+	default: return 0;
+	}
+}
+
+Rgba8 GetRedstoneWireColor(uint8_t power)
+{
+	// 无信号：深红色 (76, 0, 0)
+	// 满信号：亮红色 (255, 25, 25)
+	float t = (float)power / 15.0f;
+	uint8_t r = (uint8_t)(76 + t * 179);     // 76 -> 255
+	uint8_t g = (uint8_t)(0 + t * 25);       // 0 -> 25
+	uint8_t b = (uint8_t)(0 + t * 25);       // 0 -> 25
+	return Rgba8(r, g, b, 255);
+}
+
 bool IsSolid(uint8_t type)
 {
 	switch (type)
@@ -173,7 +200,118 @@ bool IsSnow(uint8_t type)
     return type == BLOCK_TYPE_SNOW;
 }
 
+bool IsOpaque(uint8_t blockType)
+{
+	if (blockType == BLOCK_TYPE_AIR) return false;
+	if (IsLiquid(blockType)) return false;
+	if (IsFoliage(blockType)) return false;
+	if (blockType == BLOCK_TYPE_ICE) return false;
+	if (IsRedstoneComponent(blockType)) return false;  // 红石组件不算不透明
+    
+	return true;
+}
+
 bool IsNonGroundCover(uint8_t type)
 {
 	return (type == BLOCK_TYPE_AIR) || IsFoliage(type) || IsLiquid(type);
+}
+
+bool IsRedstoneComponent(uint8_t blockType)
+{
+	return blockType >= 46 && blockType <= 71;
+}
+
+bool IsRedstonePowerSource(uint8_t blockType)
+{
+	switch (blockType)
+	{
+	case BLOCK_TYPE_REDSTONE_TORCH:
+	case BLOCK_TYPE_REDSTONE_BLOCK:
+	case BLOCK_TYPE_LEVER:
+	case BLOCK_TYPE_BUTTON_STONE:
+	case BLOCK_TYPE_BUTTON_WOOD:
+	case BLOCK_TYPE_PRESSURE_PLATE_STONE:
+	case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
+	case BLOCK_TYPE_REPEATER_ON:
+	case BLOCK_TYPE_OBSERVER:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool IsRedstoneConductor(uint8_t blockType)
+{
+	// 实心不透明方块可以传导红石信号
+	return blockType != BLOCK_TYPE_AIR && 
+		   blockType < 50 &&  // 非红石组件
+		   IsSolid(blockType) && 
+		   IsOpaque(blockType);
+}
+
+bool IsRedstoneWire(uint8_t blockType)
+{
+	return blockType >= 46 && blockType <= 50;
+}
+
+bool IsRedstonePowerable(uint8_t blockType)
+{
+	switch (blockType)
+	{
+	case BLOCK_TYPE_REDSTONE_LAMP:
+	case BLOCK_TYPE_PISTON:
+	case BLOCK_TYPE_STICKY_PISTON:
+	case BLOCK_TYPE_DISPENSER:
+	case BLOCK_TYPE_DROPPER:
+	case BLOCK_TYPE_NOTE_BLOCK:
+	case BLOCK_TYPE_TNT:
+	//case BLOCK_TYPE_DOOR_WOOD:
+	//case BLOCK_TYPE_DOOR_IRON:
+	//case BLOCK_TYPE_TRAPDOOR:
+	//case BLOCK_TYPE_FENCE_GATE:
+		return true;
+	default:
+		return false;
+	}
+}
+
+void GetPerpendicularDirectionsForLeftAndRight(Direction facing, Direction& leftDir, Direction& rightDir)
+{
+	switch (facing)
+	{
+	case DIRECTION_NORTH:
+		leftDir = DIRECTION_WEST;
+		rightDir = DIRECTION_EAST;
+		break;
+	case DIRECTION_SOUTH:
+		leftDir = DIRECTION_EAST;
+		rightDir = DIRECTION_WEST;
+		break;
+	case DIRECTION_EAST:
+		leftDir = DIRECTION_NORTH;
+		rightDir = DIRECTION_SOUTH;
+		break;
+	case DIRECTION_WEST:
+		leftDir = DIRECTION_SOUTH;
+		rightDir = DIRECTION_NORTH;
+		break;
+	default:
+		leftDir = DIRECTION_WEST;
+		rightDir = DIRECTION_EAST;
+		break;
+	}
+}
+
+IntVec3 GetDirectionVector(Direction dir)
+{
+	switch (dir)
+	{
+	case DIRECTION_NORTH: return IntVec3(0, 1, 0);
+	case DIRECTION_SOUTH: return IntVec3(0, -1, 0);
+	case DIRECTION_EAST:  return IntVec3(1, 0, 0);
+	case DIRECTION_WEST:  return IntVec3(-1, 0, 0);
+	case DIRECTION_UP:    return IntVec3(0, 0, 1);
+	case DIRECTION_DOWN:  return IntVec3(0, 0, -1);
+	default: return IntVec3(0, 0, 0);
+	}
 }

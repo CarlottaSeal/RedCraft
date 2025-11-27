@@ -4,17 +4,6 @@
 #include "GameCommon.hpp"
 #include "Engine/Math/IntVec3.h"
 
-enum Direction : uint8_t
-{
-    DIRECTION_EAST,   // +X
-    DIRECTION_WEST,   // -X
-    DIRECTION_NORTH,  // +Y
-    DIRECTION_SOUTH,  // -Y
-    DIRECTION_UP,     // +Z
-    DIRECTION_DOWN,   // -Z
-    NUM_DIRECTIONS
-};
-
 //class Chunk;
 //class Block;
 

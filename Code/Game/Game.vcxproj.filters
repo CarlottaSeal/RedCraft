@@ -70,6 +70,48 @@
     <ClCompile Include="Generator\BiomeGenerator.cpp">
       <Filter>Framework\Generator</Filter>
     </ClCompile>
+    <ClCompile Include="Physics\Chest.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="Physics\Entity.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="Physics\GameCamera.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="Physics\PhysicsUtils.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\ChessScreen.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\CraftingScreen.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\FurnaceScreen.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\GameUIManager.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\HUD.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\InventoryScreen.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\ItemSlot.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\MainMenuScreen.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\PauseMenuScreen.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\SettingsScreen.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -130,6 +172,20 @@
     <ClInclude Include="Generator\BiomeGenerator.h">
       <Filter>Framework\Generator</Filter>
     </ClInclude>
+    <ClInclude Include="Physics\Chest.h" />
+    <ClInclude Include="Physics\Entity.h" />
+    <ClInclude Include="Physics\GameCamera.h" />
+    <ClInclude Include="Physics\PhysicsUtils.h" />
+    <ClInclude Include="UI\ChestScreen.h" />
+    <ClInclude Include="UI\CraftingScreen.h" />
+    <ClInclude Include="UI\FurnaceScreen.h" />
+    <ClInclude Include="UI\GameUIManager.h" />
+    <ClInclude Include="UI\HUD.h" />
+    <ClInclude Include="UI\InventoryScreen.h" />
+    <ClInclude Include="UI\ItemSlot.h" />
+    <ClInclude Include="UI\MainMenuScreen.h" />
+    <ClInclude Include="UI\PauseMenuScreen.h" />
+    <ClInclude Include="UI\SettingsScreen.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Protogame3D.rc" />
