@@ -251,28 +251,63 @@ bool IsRedstoneConductor(uint8_t blockType)
 
 bool IsRedstoneWire(uint8_t blockType)
 {
-	return blockType >= 46 && blockType <= 50;
+	return blockType >= BLOCK_TYPE_REDSTONE_WIRE_DOT && 
+		   blockType <= BLOCK_TYPE_REDSTONE_WIRE_CROSS;
 }
 
 bool IsRedstonePowerable(uint8_t blockType)
 {
+	if (IsRedstoneWire(blockType)) return true;
 	switch (blockType)
 	{
+	case BLOCK_TYPE_REDSTONE_TORCH:
+	case BLOCK_TYPE_REDSTONE_TORCH_OFF:
+	case BLOCK_TYPE_REDSTONE_BLOCK:
 	case BLOCK_TYPE_REDSTONE_LAMP:
+	case BLOCK_TYPE_REDSTONE_LAMP_ON:
+	case BLOCK_TYPE_REPEATER_OFF:
+	case BLOCK_TYPE_REPEATER_ON:
+	case BLOCK_TYPE_LEVER:
+	case BLOCK_TYPE_BUTTON_STONE:
+	case BLOCK_TYPE_BUTTON_WOOD:
+	case BLOCK_TYPE_PRESSURE_PLATE_STONE:
+	case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
 	case BLOCK_TYPE_PISTON:
 	case BLOCK_TYPE_STICKY_PISTON:
-	case BLOCK_TYPE_DISPENSER:
-	case BLOCK_TYPE_DROPPER:
-	case BLOCK_TYPE_NOTE_BLOCK:
-	case BLOCK_TYPE_TNT:
-	//case BLOCK_TYPE_DOOR_WOOD:
-	//case BLOCK_TYPE_DOOR_IRON:
-	//case BLOCK_TYPE_TRAPDOOR:
-	//case BLOCK_TYPE_FENCE_GATE:
+	case BLOCK_TYPE_PISTON_HEAD:
+	case BLOCK_TYPE_OBSERVER:
 		return true;
 	default:
 		return false;
 	}
+}
+
+bool IsPowerSource(uint8_t blockType)
+{
+	switch (blockType)
+	{
+	case BLOCK_TYPE_REDSTONE_BLOCK:
+	case BLOCK_TYPE_REDSTONE_TORCH:
+	case BLOCK_TYPE_LEVER:
+	case BLOCK_TYPE_BUTTON_STONE:
+	case BLOCK_TYPE_BUTTON_WOOD:
+	case BLOCK_TYPE_PRESSURE_PLATE_STONE:
+	case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
+	case BLOCK_TYPE_REPEATER_ON:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool IsCrop(uint8_t blockType)
+{
+	return false;
+}
+
+bool IsMatureCrop(uint8_t blockType)
+{
+	return false;
 }
 
 void GetPerpendicularDirectionsForLeftAndRight(Direction facing, Direction& leftDir, Direction& rightDir)

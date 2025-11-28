@@ -96,6 +96,8 @@ protected:
     void AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_PCU>& verts);
     void AddWireClimbingFace(std::vector<Vertex_PCU>& verts,const Vec3& basePos,Direction climbDir,const Rgba8& color,
         const Vec2& uvMin,const Vec2& uvMax);
+    Rgba8 GetRedstoneWireTint(Block* block);
+    bool HandleBlockInteraction(const BlockIterator& block);
     const int* GetFaceIndices(Direction direction);
     IntVec3 GetNeighborBlockCoords(const IntVec3& localCoords, Direction dir);
     void UpdateVBOIBO();

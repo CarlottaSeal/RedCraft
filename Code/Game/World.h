@@ -36,6 +36,7 @@ struct BlockHighlight
 class World
 {
     friend class Game;
+    friend class CropSystem;
     
 public:
     World(Game* owner);
@@ -49,6 +50,7 @@ public:
     Chunk* GetChunkFromPlayerCameraPosition(Vec3 cameraPos);
     Chunk* GetChunk(int chunkX, int chunkY);
     Block GetBlockAtWorldCoords(int worldX, int worldY, int worldZ);
+    BlockIterator GetBlockIterator(const IntVec3& globalCoords);
     bool CanConnectToRedstone(const IntVec3& globalPos);
 
     void ActivateProcessedChunk(Chunk* chunk);
@@ -73,9 +75,9 @@ public:
     GameRaycastResult3D RaycastVsBlocks(const Vec3& start, const Vec3& direction, float maxDistance);
 
     //redstone
-    void HandleBlockInteraction(const BlockIterator& block);
     void OnBlockPlaced(const BlockIterator& block);
     void OnBlockRemoved(const BlockIterator& block, uint8_t oldType);
+    void OnBlockStateChanged(const BlockIterator& block, uint8_t oldType, uint8_t newType);
 
     void ToggleDebugMode();
     void ToggleDebugPrintingMode();

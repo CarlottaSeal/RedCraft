@@ -2,6 +2,7 @@
 #include <cstdint>
 
 #include "BlockDefinition.h"
+#include "ChunkUtils.h"
 #include "Gamecommon.hpp"
 
 class Chunk;
@@ -105,6 +106,12 @@ public:
     bool IsPistonExtended();
     void SetPistonExtended(bool extended);
     bool IsStickyPistonHead();
+
+    void SetLeverState(bool on);
+    bool GetLeverState() const;
+
+    void SetButtonPressed(bool pressed);
+    bool GetButtonPressed() const;
 };
 
 static_assert(sizeof(Block) == 4, "Block should be exactly 4 bytes!");

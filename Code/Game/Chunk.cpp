@@ -407,8 +407,23 @@ void Chunk::UpdateInputForDigAndPlace()
     }
     if (g_theApp->WasKeyJustPressed(KEYCODE_RIGHT_MOUSE))
     {
+        IntVec3 targetLocal = FindDigTarget(g_theGame->m_player->m_position);
+        if (targetLocal.z >= 0)
+        {
+            BlockIterator targetIter(this, targetLocal);
+            if (targetIter.IsValid())
+            {
+                Block* targetBlock = targetIter.GetBlock();
+                
+                // 检查是否是可交互的红石组件
+                if (HandleBlockInteraction(targetIter))
+                {
+                    return;  
+                }
+            }
+        }
+        
         IntVec3 placePlace = FindPlaceTarget(g_theGame->m_player->m_position);
-
         PlaceBlock(placePlace, m_world->m_typeToPlace);
     }
 }
@@ -519,14 +534,14 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
         block->SetBlockFacing((uint8_t)horizontal);
         block->SetRepeaterDelay(1);  // 默认1档延迟
     }
-    else if (blockType == BLOCK_TYPE_COMPARATOR_OFF ||
-             blockType == BLOCK_TYPE_COMPARATOR_ON)
-    {
-        // 比较器：同中继器
-        Direction horizontal = GetHorizontalDirection(playerFacing);
-        block->SetBlockFacing((uint8_t)horizontal);
-        block->SetComparatorMode(0);  // 默认比较模式
-    }
+    // else if (blockType == BLOCK_TYPE_COMPARATOR_OFF ||
+    //          blockType == BLOCK_TYPE_COMPARATOR_ON)
+    // {
+    //     // 比较器：同中继器
+    //     Direction horizontal = GetHorizontalDirection(playerFacing);
+    //     block->SetBlockFacing((uint8_t)horizontal);
+    //     block->SetComparatorMode(0);  // 默认比较模式
+    // }
     else if (blockType == BLOCK_TYPE_LEVER)
     {
         // 拉杆：附着在地面，朝上
@@ -623,7 +638,8 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
     m_world->OnBlockPlaced(iter);
     if (IsRedstoneWire(blockType))
     {
-        UpdateRedstoneWireConnections(globalCoords);
+        BlockIterator globalIter = m_world->GetBlockIterator(iter.GetGlobalCoords());
+        m_world->m_redstoneSimulator->UpdateNeighborWireConnections(globalIter);
     }
 }
 
@@ -1030,12 +1046,13 @@ void Chunk::AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blo
         
         // 更新位置到世界坐标
         vert.m_position += blockWorldPos;
-        
+
+        Rgba8 baseColor = GetRedstoneWireTint(iter.GetBlock());
         // 设置顶点颜色：R=室外光，G=室内光，B=方向灰度
         vert.m_color = Rgba8(
-            (unsigned char)(outdoorInfluence * 255.0f),
-            (unsigned char)(indoorInfluence * 255.0f),
-            (unsigned char)(directionGrayscale * 255.0f),
+            (unsigned char)(outdoorInfluence * 255.0f * baseColor.r),
+            (unsigned char)(indoorInfluence * 255.0f* baseColor.g),
+            (unsigned char)(directionGrayscale * 255.0f* baseColor.b),
             255
         );
         
@@ -1054,7 +1071,7 @@ void Chunk::AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blo
 void Chunk::AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_PCU>& verts)
 {
     Block* wire = block.GetBlock();
-    if (!wire || wire->m_typeIndex != BLOCK_TYPE_REDSTONE_WIRE)
+    if (!wire || !IsRedstoneWire(wire->m_typeIndex))
         return;
     
     // 获取世界坐标
@@ -1072,12 +1089,12 @@ void Chunk::AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_
     float wireHeight = 0.02f;
     
     // 获取连接状态
-    WireConnections conn = m_world->GetRedstoneSimulator()->GetWireConnections(block);
+    WireConnections conn = m_world->m_redstoneSimulator->GetWireConnections(block);
     
     // 根据连接状态选择纹理
     uint8_t texIndex = conn.GetTextureIndex();
     Vec2 uvMin, uvMax;
-    GetRedstoneWireUVs(texIndex, uvMin, uvMax);
+    //GetRedstoneWireUVs(texIndex, uvMin, uvMax);
     
     // ===== 渲染主体（顶面） =====
     float x0 = worldPos.x;
@@ -1097,22 +1114,22 @@ void Chunk::AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_
     
     // ===== 渲染爬升部分 =====
     // 北边向上
-    if (conn.north == WireConnection::UP)
+    if (conn.m_north == WireConnection::UP)
     {
         AddWireClimbingFace(verts, worldPos, DIRECTION_NORTH, color, uvMin, uvMax);
     }
     // 南边向上
-    if (conn.south == WireConnection::UP)
+    if (conn.m_south == WireConnection::UP)
     {
         AddWireClimbingFace(verts, worldPos, DIRECTION_SOUTH, color, uvMin, uvMax);
     }
     // 东边向上
-    if (conn.east == WireConnection::UP)
+    if (conn.m_east == WireConnection::UP)
     {
         AddWireClimbingFace(verts, worldPos, DIRECTION_EAST, color, uvMin, uvMax);
     }
     // 西边向上
-    if (conn.west == WireConnection::UP)
+    if (conn.m_west == WireConnection::UP)
     {
         AddWireClimbingFace(verts, worldPos, DIRECTION_WEST, color, uvMin, uvMax);
     }
@@ -1164,6 +1181,57 @@ void Chunk::AddWireClimbingFace(std::vector<Vertex_PCU>& verts, const Vec3& base
     verts.push_back(Vertex_PCU(p0, color, Vec2(uvMin.x, uvMin.y)));
     verts.push_back(Vertex_PCU(p2, color, Vec2(uvMax.x, uvMax.y)));
     verts.push_back(Vertex_PCU(p3, color, Vec2(uvMin.x, uvMax.y)));
+}
+
+Rgba8 Chunk::GetRedstoneWireTint(Block* block)
+{
+    if (!IsRedstoneWire(block->m_typeIndex))
+        return Rgba8::WHITE;
+    
+    uint8_t power = block->GetRedstonePower();
+    float t = (float)power / 15.0f;
+    
+    // 从暗红(76,0,0)到亮红(255,25,25)
+    return Rgba8(
+        (uint8_t)(76 + t * 179),   // R: 76 → 255
+        (uint8_t)(t * 25),          // G: 0 → 25
+        (uint8_t)(t * 25),          // B: 0 → 25
+        255
+    );
+}
+
+bool Chunk::HandleBlockInteraction(const BlockIterator& block)
+{
+    if (!block.IsValid())
+        return false;
+    
+    Block* b = block.GetBlock();
+    if (!b)
+        return false;
+    
+    switch (b->m_typeIndex)
+    {
+    case BLOCK_TYPE_LEVER:
+        m_world->m_redstoneSimulator->ToggleLever(block);
+        return true;
+        
+    case BLOCK_TYPE_BUTTON_STONE:
+    case BLOCK_TYPE_BUTTON_WOOD:
+        m_world->m_redstoneSimulator->PressButton(block);
+        return true;
+        
+    case BLOCK_TYPE_REPEATER_OFF:
+    case BLOCK_TYPE_REPEATER_ON:
+        m_world->m_redstoneSimulator->CycleRepeaterDelay(block);
+        return true;
+        
+        // 活塞不需要右键交互
+        // 红石块不需要交互
+        
+    default:
+        break;
+    }
+    return false;
 }
 
 const int* Chunk::GetFaceIndices(Direction direction)

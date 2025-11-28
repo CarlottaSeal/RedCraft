@@ -11,6 +11,8 @@ class CraftingScreen;
 class FurnaceScreen;
 class MainMenuScreen;
 class SettingsScreen;
+class FarmMonitorScreen;
+class RedstoneConfigScreen;
 
 class GameUIManager
 {
@@ -64,7 +66,6 @@ public:
     void CloseMainMenu();
     bool IsMainMenuOpen() const;
     
-
     void CloseTopScreen();
     void CloseAllScreens();
     
@@ -72,7 +73,6 @@ public:
     bool IsGameInputBlocked() const; 
     UIScreenType GetCurrentScreenType() const;
     
-
     void UpdateHealth(float healthPercent);
     void UpdateHunger(float hungerPercent);
     void UpdateExperience(float expPercent);
@@ -81,12 +81,19 @@ public:
     void SetHotbarItem(int slotIndex, Texture* itemTexture);
     void ShowActionMessage(std::string const& message, float duration = 2.0f);
     
-
     void SetInventoryItem(int slotIndex, ItemData const& item);
     ItemData GetInventoryItem(int slotIndex) const;
     bool AddItemToInventory(ItemData const& item);
     
+    void OpenFarmMonitor();
+    void CloseFarmMonitor();
+    bool IsFarmMonitorOpen() const;
+    void SetFarmMonitorArea(const IntVec3& minCorner, const IntVec3& maxCorner);
 
+    void OpenRedstoneConfig(const IntVec3& blockPos);
+    void CloseRedstoneConfig();
+    bool IsRedstoneConfigOpen() const;
+    
     void HandleUIInput();  
     
 private:
@@ -102,6 +109,8 @@ private:
     FurnaceScreen* m_furnaceScreen = nullptr;
     SettingsScreen* m_settingsScreen = nullptr;
     MainMenuScreen* m_mainMenuScreen = nullptr;
+    FarmMonitorScreen* m_farmMonitorScreen = nullptr;
+    RedstoneConfigScreen* m_redstoneConfigScreen = nullptr;
     
     void CreateHUD();
     void CleanupTempScreens();

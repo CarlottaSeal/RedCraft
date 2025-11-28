@@ -5,13 +5,18 @@
 #include "PauseMenuScreen.h"
 #include "ChestScreen.h"
 #include "CraftingScreen.h"
+#include "FarmMonitorScreen.h"
 #include "FurnaceScreen.h"
 #include "MainMenuScreen.h"
+#include "RedstoneConfigScreen.h"
 #include "SettingsScreen.h"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Input/InputSystem.hpp"
+#include "Game/Game.hpp"
 
+class World;
 GameUIManager* g_theGameUIManager = nullptr;
+extern Game* g_theGame;
 
 GameUIManager::GameUIManager(UISystem* uiSystem)
     : m_uiSystem(uiSystem)
@@ -483,6 +488,88 @@ bool GameUIManager::AddItemToInventory(ItemData const& item)
         return m_inventoryScreen->AddItemToInventory(item);
     }
     return false;
+}
+
+void GameUIManager::OpenFarmMonitor()
+{
+    if (IsFarmMonitorOpen())
+    {
+        return;
+    }
+    
+    // 获取 World 指针（需要从 Game 获取）
+    World* world = nullptr;
+    if (g_theGame && g_theGame->m_currentWorld)
+    {
+        world = g_theGame->m_currentWorld;
+    }
+    
+    m_farmMonitorScreen = new FarmMonitorScreen(m_uiSystem, world);
+    m_farmMonitorScreen->Build();
+    m_uiManager->PushScreen(m_farmMonitorScreen);
+}
+
+void GameUIManager::CloseFarmMonitor()
+{
+    if (!IsFarmMonitorOpen())
+    {
+        return;
+    }
+    if (m_uiManager->GetTopScreen() == m_farmMonitorScreen)
+    {
+        m_uiManager->PopScreen();
+    }
+    m_farmMonitorScreen = nullptr;
+}
+
+bool GameUIManager::IsFarmMonitorOpen() const
+{
+    return m_farmMonitorScreen != nullptr && 
+           m_uiManager->HasScreenType(UIScreenType::CUSTOM);
+}
+
+void GameUIManager::SetFarmMonitorArea(const IntVec3& minCorner, const IntVec3& maxCorner)
+{
+    if (m_farmMonitorScreen)
+    {
+        m_farmMonitorScreen->SetMonitorArea(minCorner, maxCorner);
+    }
+}
+
+void GameUIManager::OpenRedstoneConfig(const IntVec3& blockPos)
+{
+    if (IsRedstoneConfigOpen())
+    {
+        CloseRedstoneConfig();
+    }
+    
+    World* world = nullptr;
+    if (g_theGame && g_theGame->m_currentWorld)
+    {
+        world = g_theGame->m_currentWorld;
+    }
+    
+    m_redstoneConfigScreen = new RedstoneConfigScreen(m_uiSystem, world, blockPos);
+    m_redstoneConfigScreen->Build();
+    m_uiManager->PushScreen(m_redstoneConfigScreen);
+}
+
+void GameUIManager::CloseRedstoneConfig()
+{
+    if (!IsRedstoneConfigOpen())
+    {
+        return;
+    }
+    if (m_uiManager->GetTopScreen() == m_redstoneConfigScreen)
+    {
+        m_uiManager->PopScreen();
+    }
+    m_redstoneConfigScreen = nullptr;
+}
+
+bool GameUIManager::IsRedstoneConfigOpen() const
+{
+    return m_redstoneConfigScreen != nullptr;
 }
 
 void GameUIManager::HandleUIInput()

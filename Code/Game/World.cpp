@@ -314,6 +314,25 @@ Block World::GetBlockAtWorldCoords(int worldX, int worldY, int worldZ)
     return ch->GetBlock(localX, localY, localZ);
 }
 
+BlockIterator World::GetBlockIterator(const IntVec3& globalCoords)
+{
+    if (globalCoords.z < 0 || globalCoords.z >= CHUNK_SIZE_Z)
+    {
+        return BlockIterator();
+    }
+
+    IntVec2 chunkCoords = GetChunkCoords(globalCoords);
+    Chunk* chunk = GetChunk(chunkCoords.x, chunkCoords.y);
+    if (!chunk || chunk->GetState() != ChunkState::ACTIVE)
+    {
+        return BlockIterator();
+    }
+
+    IntVec3 localCoords = GlobalCoordsToLocalCoords(globalCoords);
+
+    return BlockIterator(chunk, localCoords);
+}
+
 bool World::CanConnectToRedstone(const IntVec3& globalPos)
 {
     Block block = GetBlockAtWorldCoords(globalPos.x, globalPos.y, globalPos.z);
@@ -945,39 +964,6 @@ GameRaycastResult3D World::RaycastVsBlocks(const Vec3& start, const Vec3& direct
     return result;
 }
 
-void World::HandleBlockInteraction(const BlockIterator& block)
-{
-    if (!block.IsValid())
-        return;
-    
-    Block* b = block.GetBlock();
-    if (!b)
-        return;
-    
-    switch (b->m_typeIndex)
-    {
-    case BLOCK_TYPE_LEVER:
-        m_redstoneSimulator->ToggleLever(block);
-        break;
-        
-    case BLOCK_TYPE_BUTTON_STONE:
-    case BLOCK_TYPE_BUTTON_WOOD:
-        m_redstoneSimulator->PressButton(block);
-        break;
-        
-    case BLOCK_TYPE_REPEATER:
-    case BLOCK_TYPE_REPEATER_ON:
-        m_redstoneSimulator->CycleRepeaterDelay(block);
-        break;
-        
-        // 活塞不需要右键交互
-        // 红石块不需要交互
-        
-    default:
-        break;
-    }
-}
-
 void World::OnBlockPlaced(const BlockIterator& block)
 {
     if (!block.IsValid())
@@ -996,10 +982,23 @@ void World::OnBlockPlaced(const BlockIterator& block)
 
 void World::OnBlockRemoved(const BlockIterator& block, uint8_t oldType)
 {
+    if (!block.IsValid())
+        return;
     if (IsRedstoneComponent(oldType) || IsRedstonePowerable(oldType))
     {
         if (m_redstoneSimulator)
             m_redstoneSimulator->OnBlockRemoved(block, oldType);
+    }
+}
+
+void World::OnBlockStateChanged(const BlockIterator& block, uint8_t oldType, uint8_t newType)
+{
+    if (!block.IsValid())
+        return;
+    
+    if (m_redstoneSimulator)
+    {
+        m_redstoneSimulator->OnBlockStateChanged(block, oldType, newType);
     }
 }
 
@@ -1678,7 +1677,7 @@ void World::UpdateDiggingAndPlacing(float deltaSeconds)
                     m_redstoneSimulator->PressButton(m_currentRaycast.m_hitBlock);
                     return;
                 }
-                else if (blockType == BLOCK_TYPE_REPEATER ||
+                else if (blockType == BLOCK_TYPE_REPEATER_OFF ||
                          blockType == BLOCK_TYPE_REPEATER_ON)
                 {
                     m_redstoneSimulator->CycleRepeaterDelay(m_currentRaycast.m_hitBlock);

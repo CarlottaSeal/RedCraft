@@ -38,6 +38,9 @@ bool IsRedstonePowerSource(uint8_t blockType);
 bool IsRedstoneConductor(uint8_t blockType);
 bool IsRedstoneWire(uint8_t blockType);
 bool IsRedstonePowerable(uint8_t blockType);
+bool IsPowerSource(uint8_t blockType);
+bool IsCrop(uint8_t blockType);
+bool IsMatureCrop(uint8_t blockType);
 
 void GetPerpendicularDirectionsForLeftAndRight(Direction facing, 
     Direction& leftDir, Direction& rightDir);

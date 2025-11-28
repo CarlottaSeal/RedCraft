@@ -372,6 +372,8 @@
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Gamecommon.cpp" />
     <ClCompile Include="ChunkJob.cpp" />
+    <ClCompile Include="Gameplay\CropCommon.cpp" />
+    <ClCompile Include="Gameplay\CropSystem.cpp" />
     <ClCompile Include="Gameplay\RedstoneSimulator.cpp" />
     <ClCompile Include="Generator\BiomeGenerator.cpp" />
     <ClCompile Include="Generator\CaveGenerator.cpp" />
@@ -387,6 +389,7 @@
     <ClCompile Include="Player.cpp" />
     <ClCompile Include="UI\ChessScreen.cpp" />
     <ClCompile Include="UI\CraftingScreen.cpp" />
+    <ClCompile Include="UI\FarmMonitorScreen.cpp" />
     <ClCompile Include="UI\FurnaceScreen.cpp" />
     <ClCompile Include="UI\GameUIManager.cpp" />
     <ClCompile Include="UI\HUD.cpp" />
@@ -394,6 +397,7 @@
     <ClCompile Include="UI\ItemSlot.cpp" />
     <ClCompile Include="UI\MainMenuScreen.cpp" />
     <ClCompile Include="UI\PauseMenuScreen.cpp" />
+    <ClCompile Include="UI\RedstoneConfigScreen.cpp" />
     <ClCompile Include="UI\SettingsScreen.cpp" />
     <ClCompile Include="World.cpp" />
   </ItemGroup>
@@ -409,6 +413,8 @@
     <ClInclude Include="Game.hpp" />
     <ClInclude Include="Gamecommon.hpp" />
     <ClInclude Include="ChunkJob.h" />
+    <ClInclude Include="Gameplay\CropCommon.h" />
+    <ClInclude Include="Gameplay\CropSystem.h" />
     <ClInclude Include="Gameplay\RedstoneCommon.h" />
     <ClInclude Include="Gameplay\RedstoneSimulator.h" />
     <ClInclude Include="Generator\BiomeGenerator.h" />
@@ -425,6 +431,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="UI\ChestScreen.h" />
     <ClInclude Include="UI\CraftingScreen.h" />
+    <ClInclude Include="UI\FarmMonitorScreen.h" />
     <ClInclude Include="UI\FurnaceScreen.h" />
     <ClInclude Include="UI\GameUIManager.h" />
     <ClInclude Include="UI\HUD.h" />
@@ -432,6 +439,7 @@
     <ClInclude Include="UI\ItemSlot.h" />
     <ClInclude Include="UI\MainMenuScreen.h" />
     <ClInclude Include="UI\PauseMenuScreen.h" />
+    <ClInclude Include="UI\RedstoneConfigScreen.h" />
     <ClInclude Include="UI\SettingsScreen.h" />
     <ClInclude Include="World.h" />
   </ItemGroup>

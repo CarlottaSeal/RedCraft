@@ -112,7 +112,27 @@ void Block::SetPistonExtended(bool extended)
 bool Block::IsStickyPistonHead()
 {
     return (GetRedstonePower() & 0x08) != 0;
-};
+}
+
+void Block::SetLeverState(bool on)
+{
+    SetSpecialState(on);
+}
+
+bool Block::GetLeverState() const
+{
+    return GetSpecialState();
+}
+
+void Block::SetButtonPressed(bool pressed)
+{
+    SetSpecialState(pressed);
+}
+
+bool Block::GetButtonPressed() const
+{
+    return GetSpecialState();
+}
 
 uint8_t Block::GetRepeaterDelay()
 {
