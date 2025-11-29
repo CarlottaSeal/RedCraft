@@ -884,14 +884,18 @@ bool Chunk::GenerateMesh()
     for (int blockIndex = 0; blockIndex < CHUNK_TOTAL_BLOCKS; blockIndex++)
     {
         iter = BlockIterator(this, blockIndex);
-        
         if (!iter.IsValid() || iter.GetBlockType() == BLOCK_TYPE_AIR)
             continue;
         
         const BlockDefinition& blockDef = BlockDefinition::GetBlockDef(iter.GetBlockType());
-        
         if (!blockDef.m_isVisible)
             continue;
+
+        if (NeedsSpecialRendering(iter.GetBlockType()))
+        {
+            AddRedstoneComponentToMesh(iter);
+            continue;  // 跳过普通渲染
+        }
         
         for (int dir = 0; dir < NUM_DIRECTIONS; dir++)
         {
@@ -1068,136 +1072,526 @@ void Chunk::AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blo
     m_indices.push_back((unsigned int)(startVertIndex + 3));
 }
 
-void Chunk::AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_PCU>& verts)
+void Chunk::AddRedstoneWireToMesh(const BlockIterator& iter)
 {
-    Block* wire = block.GetBlock();
+    Block* wire = iter.GetBlock();
     if (!wire || !IsRedstoneWire(wire->m_typeIndex))
         return;
     
-    // 获取世界坐标
-    Vec3 worldPos = Vec3(
-        (float)block.GetGlobalCoords().x,
-        (float)block.GetGlobalCoords().y,
-        (float)block.GetGlobalCoords().z
-    );
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
     
-    // 获取颜色
     uint8_t power = wire->GetRedstonePower();
     Rgba8 color = GetRedstoneWireColor(power);
     
-    // 红石线高度偏移（避免z-fighting）
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(wire->m_typeIndex);
+    AABB2 uvs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    
     float wireHeight = 0.02f;
     
-    // 获取连接状态
-    WireConnections conn = m_world->m_redstoneSimulator->GetWireConnections(block);
+    Vec3 p0 = worldPos + Vec3(0.0f, 0.0f, wireHeight);
+    Vec3 p1 = worldPos + Vec3(1.0f, 0.0f, wireHeight);
+    Vec3 p2 = worldPos + Vec3(1.0f, 1.0f, wireHeight);
+    Vec3 p3 = worldPos + Vec3(0.0f, 1.0f, wireHeight);
+    AddVertsForIndexQuad3D(m_vertices, m_indices, p0, p1, p2, p3, color, uvs);
+}
+
+void Chunk::AddRedstoneTorchToMesh(const BlockIterator& iter)
+{
+    Block* torch = iter.GetBlock();
+    if (!torch) return;
     
-    // 根据连接状态选择纹理
-    uint8_t texIndex = conn.GetTextureIndex();
-    Vec2 uvMin, uvMax;
-    //GetRedstoneWireUVs(texIndex, uvMin, uvMax);
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
     
-    // ===== 渲染主体（顶面） =====
-    float x0 = worldPos.x;
-    float y0 = worldPos.y;
-    float z0 = worldPos.z + wireHeight;
-    float x1 = worldPos.x + 1.0f;
-    float y1 = worldPos.y + 1.0f;
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(torch->m_typeIndex);
+    AABB2 uvs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
     
-    // 顶面四个顶点
-    verts.push_back(Vertex_PCU(Vec3(x0, y0, z0), color, Vec2(uvMin.x, uvMin.y)));
-    verts.push_back(Vertex_PCU(Vec3(x1, y0, z0), color, Vec2(uvMax.x, uvMin.y)));
-    verts.push_back(Vertex_PCU(Vec3(x1, y1, z0), color, Vec2(uvMax.x, uvMax.y)));
+    Rgba8 color = Rgba8::WHITE;
     
-    verts.push_back(Vertex_PCU(Vec3(x0, y0, z0), color, Vec2(uvMin.x, uvMin.y)));
-    verts.push_back(Vertex_PCU(Vec3(x1, y1, z0), color, Vec2(uvMax.x, uvMax.y)));
-    verts.push_back(Vertex_PCU(Vec3(x0, y1, z0), color, Vec2(uvMin.x, uvMax.y)));
+    float torchWidth = 2.0f / 16.0f;
+    float torchHeight = 10.0f / 16.0f;
+    float halfW = torchWidth / 2.0f;
     
-    // ===== 渲染爬升部分 =====
-    // 北边向上
-    if (conn.m_north == WireConnection::UP)
+    Vec3 center = worldPos + Vec3(0.5f, 0.5f, 0.0f);
+    
+    // 根据朝向调整位置（墙上火把）
+    Direction facing = (Direction)torch->GetBlockFacing();
+    if (facing != DIRECTION_UP)
     {
-        AddWireClimbingFace(verts, worldPos, DIRECTION_NORTH, color, uvMin, uvMax);
+        float offset = 0.35f;
+        switch (facing)
+        {
+        case DIRECTION_NORTH: center += Vec3(0.0f, offset, 0.15f); break;
+        case DIRECTION_SOUTH: center += Vec3(0.0f, -offset, 0.15f); break;
+        case DIRECTION_EAST:  center += Vec3(-offset, 0.0f, 0.15f); break;
+        case DIRECTION_WEST:  center += Vec3(offset, 0.0f, 0.15f); break;
+        default: break;
+        }
     }
-    // 南边向上
-    if (conn.m_south == WireConnection::UP)
+    
+    // 十字形：X方向面 (双面)
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        center + Vec3(-halfW, 0, 0), center + Vec3(halfW, 0, 0),
+        center + Vec3(halfW, 0, torchHeight), center + Vec3(-halfW, 0, torchHeight),
+        color, uvs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        center + Vec3(halfW, 0, 0), center + Vec3(-halfW, 0, 0),
+        center + Vec3(-halfW, 0, torchHeight), center + Vec3(halfW, 0, torchHeight),
+        color, uvs);
+    
+    // 十字形：Y方向面 (双面)
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        center + Vec3(0, -halfW, 0), center + Vec3(0, halfW, 0),
+        center + Vec3(0, halfW, torchHeight), center + Vec3(0, -halfW, torchHeight),
+        color, uvs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        center + Vec3(0, halfW, 0), center + Vec3(0, -halfW, 0),
+        center + Vec3(0, -halfW, torchHeight), center + Vec3(0, halfW, torchHeight),
+        color, uvs);
+}
+
+void Chunk::AddRepeaterToMesh(const BlockIterator& iter)
+{
+    Block* repeater = iter.GetBlock();
+    if (!repeater) return;
+    
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
+    
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(repeater->m_typeIndex);
+    AABB2 topUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+    
+    Rgba8 color = Rgba8::WHITE;
+    float baseHeight = 2.0f / 16.0f;
+    
+    // 底座顶面
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(0, 0, baseHeight), worldPos + Vec3(1, 0, baseHeight),
+        worldPos + Vec3(1, 1, baseHeight), worldPos + Vec3(0, 1, baseHeight),
+        color, topUVs);
+    
+    // 底座四个侧面
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(0, 0, 0), worldPos + Vec3(1, 0, 0),
+        worldPos + Vec3(1, 0, baseHeight), worldPos + Vec3(0, 0, baseHeight),
+        color, sideUVs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(1, 1, 0), worldPos + Vec3(0, 1, 0),
+        worldPos + Vec3(0, 1, baseHeight), worldPos + Vec3(1, 1, baseHeight),
+        color, sideUVs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(0, 1, 0), worldPos + Vec3(0, 0, 0),
+        worldPos + Vec3(0, 0, baseHeight), worldPos + Vec3(0, 1, baseHeight),
+        color, sideUVs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(1, 0, 0), worldPos + Vec3(1, 1, 0),
+        worldPos + Vec3(1, 1, baseHeight), worldPos + Vec3(1, 0, baseHeight),
+        color, sideUVs);
+    
+    // 两个小火把
+    bool isOn = (repeater->m_typeIndex == BLOCK_TYPE_REPEATER_ON);
+    uint8_t torchType = isOn ? BLOCK_TYPE_REDSTONE_TORCH : BLOCK_TYPE_REDSTONE_TORCH_OFF;
+    const BlockDefinition& torchDef = BlockDefinition::GetBlockDef(torchType);
+    AABB2 torchUVs = g_theGame->m_spriteSheet->GetSpriteUVs(torchDef.m_sideSpriteCoords);
+    
+    float ts = 2.0f / 16.0f;  // torch size
+    float th = 5.0f / 16.0f;  // torch height
+    uint8_t delay = repeater->GetRepeaterDelay();
+    
+    // 前火把
+    AABB3 front(worldPos + Vec3(0.5f - ts/2, 3.0f/16.0f, baseHeight),
+                worldPos + Vec3(0.5f + ts/2, 3.0f/16.0f + ts, baseHeight + th));
+    AddVertsForIndexAABB3D(m_vertices, m_indices, front, color, torchUVs);
+    
+    // 后火把 (位置随 delay 变化: 1-4 tick)
+    float backY = 11.0f/16.0f - (delay - 1) * 2.0f/16.0f;
+    AABB3 back(worldPos + Vec3(0.5f - ts/2, backY, baseHeight),
+               worldPos + Vec3(0.5f + ts/2, backY + ts, baseHeight + th));
+    AddVertsForIndexAABB3D(m_vertices, m_indices, back, color, torchUVs);
+
+}
+
+void Chunk::AddLeverToMesh(const BlockIterator& iter)
+{
+    Block* lever = iter.GetBlock();
+    if (!lever) return;
+    
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
+    
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(lever->m_typeIndex);
+    AABB2 baseUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_bottomSpriteCoords);
+    AABB2 leverUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+    
+    Rgba8 color = Rgba8::WHITE;
+    bool isOn = lever->GetSpecialState();
+    
+    // 底座
+    float bw = 6.0f / 16.0f, bd = 4.0f / 16.0f, bh = 3.0f / 16.0f;
+    Vec3 baseCenter = worldPos + Vec3(0.5f, 0.5f, 0.0f);
+    AABB3 base(baseCenter + Vec3(-bw/2, -bd/2, 0), baseCenter + Vec3(bw/2, bd/2, bh));
+    AddVertsForIndexAABB3D(m_vertices, m_indices, base, color, baseUVs);
+    
+    // 拉杆柄 (倾斜)
+    float lw = 2.0f / 16.0f, ll = 8.0f / 16.0f;
+    float halfW = lw / 2.0f;
+    Vec3 leverBase = baseCenter + Vec3(0, 0, bh);
+    float tilt = ll * 0.7f;
+    Vec3 leverEnd = isOn ? (leverBase + Vec3(0, tilt, tilt)) : (leverBase + Vec3(0, -tilt, tilt));
+    
+    // 两个面 (双面渲染)
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        leverBase + Vec3(-halfW, 0, 0), leverBase + Vec3(halfW, 0, 0),
+        leverEnd + Vec3(halfW, 0, 0), leverEnd + Vec3(-halfW, 0, 0),
+        color, leverUVs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        leverBase + Vec3(halfW, 0, 0), leverBase + Vec3(-halfW, 0, 0),
+        leverEnd + Vec3(-halfW, 0, 0), leverEnd + Vec3(halfW, 0, 0),
+        color, leverUVs);
+}
+
+void Chunk::AddButtonToMesh(const BlockIterator& iter)
+{
+    Block* button = iter.GetBlock();
+    if (!button) return;
+    
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
+    
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(button->m_typeIndex);
+    AABB2 uvs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+    Rgba8 color = Rgba8::WHITE;
+    bool isPressed = button->GetSpecialState();
+    Direction facing = (Direction)button->GetBlockFacing();
+    float bw = 6.0f / 16.0f, bh = 4.0f / 16.0f;
+    float bd = isPressed ? 1.0f / 16.0f : 2.0f / 16.0f;
+    Vec3 mins, maxs;
+    switch (facing)
     {
-        AddWireClimbingFace(verts, worldPos, DIRECTION_SOUTH, color, uvMin, uvMax);
+    case DIRECTION_UP:
+        mins = worldPos + Vec3(0.5f - bw/2, 0.5f - bh/2, 0);
+        maxs = mins + Vec3(bw, bh, bd);
+        break;
+    case DIRECTION_DOWN:
+        maxs = worldPos + Vec3(0.5f + bw/2, 0.5f + bh/2, 1);
+        mins = maxs - Vec3(bw, bh, bd);
+        break;
+    case DIRECTION_NORTH:
+        mins = worldPos + Vec3(0.5f - bw/2, 1 - bd, 0.5f - bh/2);
+        maxs = mins + Vec3(bw, bd, bh);
+        break;
+    case DIRECTION_SOUTH:
+        mins = worldPos + Vec3(0.5f - bw/2, 0, 0.5f - bh/2);
+        maxs = mins + Vec3(bw, bd, bh);
+        break;
+    case DIRECTION_EAST:
+        mins = worldPos + Vec3(1 - bd, 0.5f - bw/2, 0.5f - bh/2);
+        maxs = mins + Vec3(bd, bw, bh);
+        break;
+    case DIRECTION_WEST:
+        mins = worldPos + Vec3(0, 0.5f - bw/2, 0.5f - bh/2);
+        maxs = mins + Vec3(bd, bw, bh);
+        break;
+    default:
+        mins = worldPos + Vec3(0.5f - bw/2, 0.5f - bh/2, 0);
+        maxs = mins + Vec3(bw, bh, bd);
     }
-    // 东边向上
-    if (conn.m_east == WireConnection::UP)
+    AddVertsForIndexAABB3D(m_vertices, m_indices, AABB3(mins, maxs), color, uvs);
+}
+
+void Chunk::AddPistonToMesh(const BlockIterator& iter)
+{
+    Block* piston = iter.GetBlock();
+    if (!piston) return;
+    
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
+    
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(piston->m_typeIndex);
+    AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+    AABB2 topUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    AABB2 bottomUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_bottomSpriteCoords);
+    
+    Rgba8 color = Rgba8::WHITE;
+    bool extended = piston->IsPistonExtended();
+    
+    float height = extended ? (12.0f / 16.0f) : 1.0f;
+    AABB2 actualTopUVs = extended ? sideUVs : topUVs;
+    
+    // 底面
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(0, 1, 0), worldPos + Vec3(1, 1, 0),
+        worldPos + Vec3(1, 0, 0), worldPos + Vec3(0, 0, 0),
+        color, bottomUVs);
+    // 顶面
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(0, 0, height), worldPos + Vec3(1, 0, height),
+        worldPos + Vec3(1, 1, height), worldPos + Vec3(0, 1, height),
+        color, actualTopUVs);
+    // 四个侧面
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(1, 0, 0), worldPos + Vec3(1, 1, 0),
+        worldPos + Vec3(1, 1, height), worldPos + Vec3(1, 0, height),
+        color, sideUVs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(0, 1, 0), worldPos + Vec3(0, 0, 0),
+        worldPos + Vec3(0, 0, height), worldPos + Vec3(0, 1, height),
+        color, sideUVs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(1, 1, 0), worldPos + Vec3(0, 1, 0),
+        worldPos + Vec3(0, 1, height), worldPos + Vec3(1, 1, height),
+        color, sideUVs);
+    AddVertsForIndexQuad3D(m_vertices, m_indices,
+        worldPos + Vec3(0, 0, 0), worldPos + Vec3(1, 0, 0),
+        worldPos + Vec3(1, 0, height), worldPos + Vec3(0, 0, height),
+        color, sideUVs);
+}
+
+void Chunk::AddPistonHeadToMesh(const BlockIterator& iter)
+{
+    Block* head = iter.GetBlock();
+    if (!head) return;
+    
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
+    
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(head->m_typeIndex);
+    AABB2 topUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+    
+    Rgba8 color = Rgba8::WHITE;
+    
+    float headThick = 4.0f / 16.0f;
+    float armW = 4.0f / 16.0f;
+    float armOff = (1.0f - armW) / 2.0f;
+    
+    // 头部
+    AABB3 headBox(worldPos + Vec3(0, 0, 1 - headThick), worldPos + Vec3(1, 1, 1));
+    AddVertsForIndexAABB3D(m_vertices, m_indices, headBox, color, topUVs);
+    
+    // 连接杆
+    AABB3 armBox(worldPos + Vec3(armOff, armOff, 0), worldPos + Vec3(armOff + armW, armOff + armW, 1 - headThick));
+    AddVertsForIndexAABB3D(m_vertices, m_indices, armBox, color, sideUVs);
+
+}
+
+void Chunk::AddObserverToMesh(const BlockIterator& iter)
+{
+    Block* observer = iter.GetBlock();
+    if (!observer) return;
+    
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 pos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
+    
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(observer->m_typeIndex);
+    
+    // top = 检测面, bottom = 输出面, side = 侧面
+    AABB2 frontUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    AABB2 backUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_bottomSpriteCoords);
+    AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+    
+    Rgba8 color = Rgba8::WHITE;
+    Direction facing = (Direction)observer->GetBlockFacing();
+    
+    // 8个顶点
+    Vec3 p000 = pos;
+    Vec3 p100 = pos + Vec3(1, 0, 0);
+    Vec3 p010 = pos + Vec3(0, 1, 0);
+    Vec3 p110 = pos + Vec3(1, 1, 0);
+    Vec3 p001 = pos + Vec3(0, 0, 1);
+    Vec3 p101 = pos + Vec3(1, 0, 1);
+    Vec3 p011 = pos + Vec3(0, 1, 1);
+    Vec3 p111 = pos + Vec3(1, 1, 1);
+    
+    // 根据朝向渲染6个面
+    switch (facing)
     {
-        AddWireClimbingFace(verts, worldPos, DIRECTION_EAST, color, uvMin, uvMax);
-    }
-    // 西边向上
-    if (conn.m_west == WireConnection::UP)
-    {
-        AddWireClimbingFace(verts, worldPos, DIRECTION_WEST, color, uvMin, uvMax);
+    case DIRECTION_NORTH:  // 检测面朝 +Y
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p010, p011, p111, color, frontUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p000, p100, p101, p001, color, backUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p100, p110, p111, p101, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p010, p000, p001, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p001, p101, p111, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p100, p000, p010, color, sideUVs);
+        break;
+    case DIRECTION_SOUTH:  // 检测面朝 -Y
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p000, p100, p101, p001, color, frontUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p010, p011, p111, color, backUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p100, p110, p111, p101, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p010, p000, p001, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p001, p101, p111, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p100, p000, p010, color, sideUVs);
+        break;
+    case DIRECTION_EAST:   // 检测面朝 +X
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p100, p110, p111, p101, color, frontUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p010, p000, p001, p011, color, backUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p010, p011, p111, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p000, p100, p101, p001, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p001, p101, p111, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p100, p000, p010, color, sideUVs);
+        break;
+    case DIRECTION_WEST:   // 检测面朝 -X
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p010, p000, p001, p011, color, frontUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p100, p110, p111, p101, color, backUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p010, p011, p111, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p000, p100, p101, p001, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p001, p101, p111, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p100, p000, p010, color, sideUVs);
+        break;
+    case DIRECTION_UP:     // 检测面朝 +Z
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p001, p101, p111, p011, color, frontUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p100, p000, p010, color, backUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p100, p110, p111, p101, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p010, p000, p001, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p010, p011, p111, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p000, p100, p101, p001, color, sideUVs);
+        break;
+    case DIRECTION_DOWN:   // 检测面朝 -Z
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p100, p000, p010, color, frontUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p001, p101, p111, p011, color, backUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p100, p110, p111, p101, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p010, p000, p001, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p010, p011, p111, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p000, p100, p101, p001, color, sideUVs);
+        break;
+    default:
+        // 默认朝 +Y
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p010, p011, p111, color, frontUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p000, p100, p101, p001, color, backUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p100, p110, p111, p101, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p010, p000, p001, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p001, p101, p111, p011, color, sideUVs);
+        AddVertsForIndexQuad3D(m_vertices, m_indices, p110, p100, p000, p010, color, sideUVs);
     }
 }
 
-void Chunk::AddWireClimbingFace(std::vector<Vertex_PCU>& verts, const Vec3& basePos, Direction climbDir,
-    const Rgba8& color, const Vec2& uvMin, const Vec2& uvMax)
+// void Chunk::AddWireClimbingFace(std::vector<Vertex_PCU>& verts, const Vec3& basePos, Direction climbDir,
+//                                 const Rgba8& color, const Vec2& uvMin, const Vec2& uvMax)
+// {
+//     float offset = 0.02f;  // 避免z-fighting
+//     Vec3 p0, p1, p2, p3;
+//     
+//     switch (climbDir)
+//     {
+//     case DIRECTION_NORTH:
+//         p0 = basePos + Vec3(0, 0, offset);
+//         p1 = basePos + Vec3(1, 0, offset);
+//         p2 = basePos + Vec3(1, 0, 1 + offset);
+//         p3 = basePos + Vec3(0, 0, 1 + offset);
+//         break;
+//         
+//     case DIRECTION_SOUTH:
+//         p0 = basePos + Vec3(0, 1, offset);
+//         p1 = basePos + Vec3(1, 1, offset);
+//         p2 = basePos + Vec3(1, 1, 1 + offset);
+//         p3 = basePos + Vec3(0, 1, 1 + offset);
+//         break;
+//         
+//     case DIRECTION_EAST:
+//         p0 = basePos + Vec3(1, 0, offset);
+//         p1 = basePos + Vec3(1, 1, offset);
+//         p2 = basePos + Vec3(1, 1, 1 + offset);
+//         p3 = basePos + Vec3(1, 0, 1 + offset);
+//         break;
+//         
+//     case DIRECTION_WEST:
+//         p0 = basePos + Vec3(0, 0, offset);
+//         p1 = basePos + Vec3(0, 1, offset);
+//         p2 = basePos + Vec3(0, 1, 1 + offset);
+//         p3 = basePos + Vec3(0, 0, 1 + offset);
+//         break;
+//         
+//     default:
+//         return;
+//     }
+//     verts.push_back(Vertex_PCU(p0, color, Vec2(uvMin.x, uvMin.y)));
+//     verts.push_back(Vertex_PCU(p1, color, Vec2(uvMax.x, uvMin.y)));
+//     verts.push_back(Vertex_PCU(p2, color, Vec2(uvMax.x, uvMax.y)));
+//     
+//     verts.push_back(Vertex_PCU(p0, color, Vec2(uvMin.x, uvMin.y)));
+//     verts.push_back(Vertex_PCU(p2, color, Vec2(uvMax.x, uvMax.y)));
+//     verts.push_back(Vertex_PCU(p3, color, Vec2(uvMin.x, uvMax.y)));
+// }
+
+// Rgba8 Chunk::GetRedstoneWireTint(Block* block)
+// {
+//     if (!IsRedstoneWire(block->m_typeIndex))
+//         return Rgba8::WHITE;
+//     
+//     uint8_t power = block->GetRedstonePower();
+//     float t = (float)power / 15.0f;
+//     
+//     // 从暗红(76,0,0)到亮红(255,25,25)
+//     return Rgba8(
+//         (uint8_t)(76 + t * 179),   // R: 76 → 255
+//         (uint8_t)(t * 25),          // G: 0 → 25
+//         (uint8_t)(t * 25),          // B: 0 → 25
+//         255
+//     );
+// }
+
+bool Chunk::NeedsSpecialRendering(uint8_t blockType)
 {
-    float offset = 0.02f;  // 避免z-fighting
-    Vec3 p0, p1, p2, p3;
-    
-    switch (climbDir)
+    if (IsRedstoneWire(blockType))
+        return true;
+    switch (blockType)
     {
-    case DIRECTION_NORTH:
-        p0 = basePos + Vec3(0, 0, offset);
-        p1 = basePos + Vec3(1, 0, offset);
-        p2 = basePos + Vec3(1, 0, 1 + offset);
-        p3 = basePos + Vec3(0, 0, 1 + offset);
-        break;
-        
-    case DIRECTION_SOUTH:
-        p0 = basePos + Vec3(0, 1, offset);
-        p1 = basePos + Vec3(1, 1, offset);
-        p2 = basePos + Vec3(1, 1, 1 + offset);
-        p3 = basePos + Vec3(0, 1, 1 + offset);
-        break;
-        
-    case DIRECTION_EAST:
-        p0 = basePos + Vec3(1, 0, offset);
-        p1 = basePos + Vec3(1, 1, offset);
-        p2 = basePos + Vec3(1, 1, 1 + offset);
-        p3 = basePos + Vec3(1, 0, 1 + offset);
-        break;
-        
-    case DIRECTION_WEST:
-        p0 = basePos + Vec3(0, 0, offset);
-        p1 = basePos + Vec3(0, 1, offset);
-        p2 = basePos + Vec3(0, 1, 1 + offset);
-        p3 = basePos + Vec3(0, 0, 1 + offset);
-        break;
-        
+    case BLOCK_TYPE_REDSTONE_TORCH:
+    case BLOCK_TYPE_REDSTONE_TORCH_OFF:
+    case BLOCK_TYPE_REPEATER_OFF:
+    case BLOCK_TYPE_REPEATER_ON:
+    case BLOCK_TYPE_LEVER:
+    case BLOCK_TYPE_BUTTON_STONE:
+    case BLOCK_TYPE_BUTTON_WOOD:
+    case BLOCK_TYPE_PISTON:
+    case BLOCK_TYPE_PISTON_HEAD:
+    case BLOCK_TYPE_OBSERVER:
+        return true;
     default:
+        return false;
+    }
+}
+
+void Chunk::AddRedstoneComponentToMesh(const BlockIterator& iter)
+{
+    Block* block = iter.GetBlock();
+    if (!block) return;
+    
+    uint8_t type = block->m_typeIndex;
+    if (IsRedstoneWire(type))
+    {
+        AddRedstoneWireToMesh(iter);
         return;
     }
-    verts.push_back(Vertex_PCU(p0, color, Vec2(uvMin.x, uvMin.y)));
-    verts.push_back(Vertex_PCU(p1, color, Vec2(uvMax.x, uvMin.y)));
-    verts.push_back(Vertex_PCU(p2, color, Vec2(uvMax.x, uvMax.y)));
-    
-    verts.push_back(Vertex_PCU(p0, color, Vec2(uvMin.x, uvMin.y)));
-    verts.push_back(Vertex_PCU(p2, color, Vec2(uvMax.x, uvMax.y)));
-    verts.push_back(Vertex_PCU(p3, color, Vec2(uvMin.x, uvMax.y)));
-}
-
-Rgba8 Chunk::GetRedstoneWireTint(Block* block)
-{
-    if (!IsRedstoneWire(block->m_typeIndex))
-        return Rgba8::WHITE;
-    
-    uint8_t power = block->GetRedstonePower();
-    float t = (float)power / 15.0f;
-    
-    // 从暗红(76,0,0)到亮红(255,25,25)
-    return Rgba8(
-        (uint8_t)(76 + t * 179),   // R: 76 → 255
-        (uint8_t)(t * 25),          // G: 0 → 25
-        (uint8_t)(t * 25),          // B: 0 → 25
-        255
-    );
+    switch (type)
+    {
+    case BLOCK_TYPE_REDSTONE_TORCH:
+    case BLOCK_TYPE_REDSTONE_TORCH_OFF:
+        AddRedstoneTorchToMesh(iter);
+        break;
+    case BLOCK_TYPE_REPEATER_OFF:
+    case BLOCK_TYPE_REPEATER_ON:
+        AddRepeaterToMesh(iter);
+        break;
+    case BLOCK_TYPE_LEVER:
+        AddLeverToMesh(iter);
+        break;
+    case BLOCK_TYPE_BUTTON_STONE:
+    case BLOCK_TYPE_BUTTON_WOOD:
+        AddButtonToMesh(iter);
+        break;
+    case BLOCK_TYPE_PISTON:
+        AddPistonToMesh(iter);
+        break;
+    case BLOCK_TYPE_PISTON_HEAD:
+        AddPistonHeadToMesh(iter);
+        break;
+    case BLOCK_TYPE_OBSERVER:
+        AddObserverToMesh(iter);
+        break;
+    }
 }
 
 bool Chunk::HandleBlockInteraction(const BlockIterator& block)

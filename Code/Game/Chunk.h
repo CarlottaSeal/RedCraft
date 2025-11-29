@@ -93,15 +93,25 @@ protected:
     void GenerateDebug();
     bool ShouldRenderFace(const BlockIterator& iter, Direction direction);
     void AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blockDef, Direction direction);
-    void AddRedstoneWireToMesh(const BlockIterator& block,std::vector<Vertex_PCU>& verts);
-    void AddWireClimbingFace(std::vector<Vertex_PCU>& verts,const Vec3& basePos,Direction climbDir,const Rgba8& color,
-        const Vec2& uvMin,const Vec2& uvMax);
-    Rgba8 GetRedstoneWireTint(Block* block);
+    // void AddWireClimbingFace(std::vector<Vertex_PCU>& verts,const Vec3& basePos,Direction climbDir,const Rgba8& color,
+    //     const Vec2& uvMin,const Vec2& uvMax);
     bool HandleBlockInteraction(const BlockIterator& block);
     const int* GetFaceIndices(Direction direction);
     IntVec3 GetNeighborBlockCoords(const IntVec3& localCoords, Direction dir);
     void UpdateVBOIBO();
     bool AreAllNeighborsActive() const;
+
+    //Rgba8 GetRedstoneWireTint(Block* block);
+    bool NeedsSpecialRendering(uint8_t blockType);
+    void AddRedstoneComponentToMesh(const BlockIterator& iter);
+    void AddRedstoneWireToMesh(const BlockIterator& iter);          
+    void AddRedstoneTorchToMesh(const BlockIterator& iter);         
+    void AddRepeaterToMesh(const BlockIterator& iter);              
+    void AddLeverToMesh(const BlockIterator& iter);                 
+    void AddButtonToMesh(const BlockIterator& iter);                
+    void AddPistonToMesh(const BlockIterator& iter);                
+    void AddPistonHeadToMesh(const BlockIterator& iter);            
+    void AddObserverToMesh(const BlockIterator& iter); 
 
 protected:
     ChunkSerializer* m_serializer;
