@@ -470,7 +470,7 @@ void RedstoneConfigScreen::ShowConfigPanelForBlockType(uint8_t blockType)
     }
     
     // 根据类型显示特定配置
-    if (blockType == BLOCK_TYPE_REPEATER || blockType == BLOCK_TYPE_REPEATER_ON)
+    if (blockType == BLOCK_TYPE_REPEATER_OFF || blockType == BLOCK_TYPE_REPEATER_ON)
     {
         if (m_repeaterPanel) m_repeaterPanel->SetEnabled(true);
         if (m_delayLabel) m_delayLabel->SetEnabled(true);
@@ -791,12 +791,9 @@ std::string RedstoneConfigScreen::GetBlockTypeName(uint8_t blockType) const
 {
     switch (blockType)
     {
-    case BLOCK_TYPE_REPEATER:
+    case BLOCK_TYPE_REPEATER_OFF:
     case BLOCK_TYPE_REPEATER_ON:
         return "Redstone Repeater";
-    case BLOCK_TYPE_COMPARATOR:
-    case BLOCK_TYPE_COMPARATOR_ON:
-        return "Redstone Comparator";
     case BLOCK_TYPE_OBSERVER:
         return "Observer";
     case BLOCK_TYPE_PISTON:
@@ -807,8 +804,6 @@ std::string RedstoneConfigScreen::GetBlockTypeName(uint8_t blockType) const
         return "Lever";
     case BLOCK_TYPE_BUTTON_STONE:
         return "Stone Button";
-    case BLOCK_TYPE_BUTTON_WOOD:
-        return "Wooden Button";
     case BLOCK_TYPE_REDSTONE_TORCH:
         return "Redstone Torch";
     default:

@@ -23,15 +23,14 @@ void HUD::Build()
     {
         return;
     }
-    
     // 设置相机为全屏UI视图
     m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
     
     BuildCrosshair();
-    BuildHealthBar();
-    BuildArmorBar(); 
-    BuildHungerBar();
-    BuildExperienceBar();
+    // BuildHealthBar();
+    // BuildArmorBar(); 
+    // BuildHungerBar();
+    // BuildExperienceBar();
     BuildHotbar();
     BuildActionText();
 }
@@ -55,93 +54,93 @@ void HUD::BuildCrosshair()
     m_elements.push_back(m_crosshair);
 }
 
-void HUD::BuildHealthBar()
-{
-    // 生命值条在左下角，血条样式
-    AABB2 healthBounds(20, 40, 220, 60);
-    
-    m_healthBar = new ProgressBar(
-        m_canvas,
-        healthBounds,
-        0.0f,      // minValue
-        100.0f,    // maxValue
-        Rgba8(50, 50, 50, 180),    // 背景色（半透明深灰）
-        Rgba8(220, 20, 20),         // 填充色（红色）
-        Rgba8::WHITE,               // 边框色
-        true                        // 有边框
-    );
-    
-    m_healthBar->SetValue(100.0f);  // 初始满血
-    m_elements.push_back(m_healthBar);
-}
-
-void HUD::BuildHungerBar()
-{
-    // 饥饿值条在生命值右侧
-    AABB2 hungerBounds(240, 40, 440, 60);
-    
-    m_hungerBar = new ProgressBar(
-        m_canvas,
-        hungerBounds,
-        0.0f,
-        100.0f,
-        Rgba8(50, 50, 50, 180),
-        Rgba8(205, 133, 63),  // 棕褐色（食物色）
-        Rgba8::WHITE,
-        true
-    );
-    
-    m_hungerBar->SetValue(100.0f);
-    m_elements.push_back(m_hungerBar);
-}
-
-void HUD::BuildArmorBar()
-{
-    AABB2 armorBounds(20, 70, 220, 90);
-    
-    m_armorBar = new ProgressBar(
-        m_canvas,
-        armorBounds,
-        0.0f,      // minValue
-        100.0f,    // maxValue
-        Rgba8(50, 50, 50, 180),      // 背景色（半透明深灰）
-        Rgba8(180, 180, 180),        // 填充色（银灰色，代表护甲）
-        Rgba8::WHITE,                // 边框色
-        true                         // 有边框
-    );
-    
-    m_armorBar->SetValue(0.0f);  // 初始无护甲
-    m_elements.push_back(m_armorBar);
-    
-    // 可选：添加护甲图标
-    // TextSetting iconSetting;
-    // iconSetting.m_text = "🛡";  // 盾牌emoji，或者用纹理
-    // iconSetting.m_color = Rgba8(200, 200, 200);
-    // iconSetting.m_height = 16.0f;
-    // Vec2 iconPos(5, 75);
-    // Text* armorIcon = new Text(m_canvas, iconPos, iconSetting);
-    // m_elements.push_back(armorIcon);
-}
-
-void HUD::BuildExperienceBar()
-{
-    // 经验值条在屏幕底部中央，快捷栏上方
-    AABB2 expBounds(600, 100, 1000, 110);
-    
-    m_experienceBar = new ProgressBar(
-        m_canvas,
-        expBounds,
-        0.0f,
-        100.0f,
-        Rgba8(0, 0, 0, 100),
-        Rgba8(127, 255, 0),  // 绿色经验条
-        Rgba8(0, 200, 0),
-        true
-    );
-    
-    m_experienceBar->SetValue(0.0f);
-    m_elements.push_back(m_experienceBar);
-}
+// void HUD::BuildHealthBar()
+// {
+//     // 生命值条在左下角，血条样式
+//     AABB2 healthBounds(20, 40, 220, 60);
+//     
+//     m_healthBar = new ProgressBar(
+//         m_canvas,
+//         healthBounds,
+//         0.0f,      // minValue
+//         100.0f,    // maxValue
+//         Rgba8(50, 50, 50, 180),    // 背景色（半透明深灰）
+//         Rgba8(220, 20, 20),         // 填充色（红色）
+//         Rgba8::WHITE,               // 边框色
+//         true                        // 有边框
+//     );
+//     
+//     m_healthBar->SetValue(100.0f);  // 初始满血
+//     m_elements.push_back(m_healthBar);
+// }
+//
+// void HUD::BuildHungerBar()
+// {
+//     // 饥饿值条在生命值右侧
+//     AABB2 hungerBounds(240, 40, 440, 60);
+//     
+//     m_hungerBar = new ProgressBar(
+//         m_canvas,
+//         hungerBounds,
+//         0.0f,
+//         100.0f,
+//         Rgba8(50, 50, 50, 180),
+//         Rgba8(205, 133, 63),  // 棕褐色（食物色）
+//         Rgba8::WHITE,
+//         true
+//     );
+//     
+//     m_hungerBar->SetValue(100.0f);
+//     m_elements.push_back(m_hungerBar);
+// }
+//
+// void HUD::BuildArmorBar()
+// {
+//     AABB2 armorBounds(20, 70, 220, 90);
+//     
+//     m_armorBar = new ProgressBar(
+//         m_canvas,
+//         armorBounds,
+//         0.0f,      // minValue
+//         100.0f,    // maxValue
+//         Rgba8(50, 50, 50, 180),      // 背景色（半透明深灰）
+//         Rgba8(180, 180, 180),        // 填充色（银灰色，代表护甲）
+//         Rgba8::WHITE,                // 边框色
+//         true                         // 有边框
+//     );
+//     
+//     m_armorBar->SetValue(0.0f);  // 初始无护甲
+//     m_elements.push_back(m_armorBar);
+//     
+//     // 可选：添加护甲图标
+//     // TextSetting iconSetting;
+//     // iconSetting.m_text = "🛡";  // 盾牌emoji，或者用纹理
+//     // iconSetting.m_color = Rgba8(200, 200, 200);
+//     // iconSetting.m_height = 16.0f;
+//     // Vec2 iconPos(5, 75);
+//     // Text* armorIcon = new Text(m_canvas, iconPos, iconSetting);
+//     // m_elements.push_back(armorIcon);
+// }
+//
+// void HUD::BuildExperienceBar()
+// {
+//     // 经验值条在屏幕底部中央，快捷栏上方
+//     AABB2 expBounds(600, 100, 1000, 110);
+//     
+//     m_experienceBar = new ProgressBar(
+//         m_canvas,
+//         expBounds,
+//         0.0f,
+//         100.0f,
+//         Rgba8(0, 0, 0, 100),
+//         Rgba8(127, 255, 0),  // 绿色经验条
+//         Rgba8(0, 200, 0),
+//         true
+//     );
+//     
+//     m_experienceBar->SetValue(0.0f);
+//     m_elements.push_back(m_experienceBar);
+// }
 
 void HUD::BuildHotbar()
 {
@@ -307,47 +306,47 @@ void HUD::HandleHotbarInput()
     }
 }
 
-void HUD::UpdateHealth(float healthPercent)
-{
-    if (m_healthBar)
-    {
-        m_healthBar->SetValueNormalized(healthPercent);
-    }
-}
-
-void HUD::UpdateHunger(float hungerPercent)
-{
-    if (m_hungerBar)
-    {
-        m_hungerBar->SetValueNormalized(hungerPercent);
-    }
-}
-
-void HUD::UpdateArmor(float armorPercent)
-{
-    if (m_armorBar)
-    {
-        m_armorBar->SetValueNormalized(armorPercent);
-        
-        // 可选：没有护甲时隐藏护甲条
-        if (armorPercent <= 0.0f)
-        {
-            m_armorBar->SetEnabled(false);
-        }
-        else
-        {
-            m_armorBar->SetEnabled(true);
-        }
-    }
-}
-
-void HUD::UpdateExperience(float expPercent)
-{
-    if (m_experienceBar)
-    {
-        m_experienceBar->SetValueNormalized(expPercent);
-    }
-}
+// void HUD::UpdateHealth(float healthPercent)
+// {
+//     if (m_healthBar)
+//     {
+//         m_healthBar->SetValueNormalized(healthPercent);
+//     }
+// }
+//
+// void HUD::UpdateHunger(float hungerPercent)
+// {
+//     if (m_hungerBar)
+//     {
+//         m_hungerBar->SetValueNormalized(hungerPercent);
+//     }
+// }
+//
+// void HUD::UpdateArmor(float armorPercent)
+// {
+//     if (m_armorBar)
+//     {
+//         m_armorBar->SetValueNormalized(armorPercent);
+//         
+//         // 可选：没有护甲时隐藏护甲条
+//         if (armorPercent <= 0.0f)
+//         {
+//             m_armorBar->SetEnabled(false);
+//         }
+//         else
+//         {
+//             m_armorBar->SetEnabled(true);
+//         }
+//     }
+// }
+//
+// void HUD::UpdateExperience(float expPercent)
+// {
+//     if (m_experienceBar)
+//     {
+//         m_experienceBar->SetValueNormalized(expPercent);
+//     }
+// }
 
 void HUD::SetHotbarSlot(int slotIndex, Texture* itemTexture)
 {

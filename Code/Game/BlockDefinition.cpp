@@ -20,6 +20,7 @@ BlockDefinition::BlockDefinition(XmlElement const& blockDefElement)
     m_isVisible = ParseXmlAttribute(blockDefElement, "isVisible", m_isVisible);
     m_isSolid = ParseXmlAttribute(blockDefElement, "isSolid", m_isSolid);
     m_isOpaque = ParseXmlAttribute(blockDefElement, "isOpaque", m_isOpaque);
+    m_isTransparent = ParseXmlAttribute(blockDefElement, "isTransparent", m_isTransparent);
 
     m_topSpriteCoords = ParseXmlAttribute(blockDefElement, "topSpriteCoords", IntVec2());
     m_bottomSpriteCoords = ParseXmlAttribute(blockDefElement, "bottomSpriteCoords", IntVec2());
@@ -130,6 +131,116 @@ void BlockDefinition::InitializeBlockDefs()
         else if (def.m_name == "SprucePlanks") s_blockDefsByType[BLOCK_TYPE_SPRUCE_PLANKS] = &def;
         else if (def.m_name == "SpruceLeaves") s_blockDefsByType[BLOCK_TYPE_SPRUCE_LEAVES] = &def;
         else if (def.m_name == "SpruceLeavesSnow") s_blockDefsByType[BLOCK_TYPE_SPRUCE_LEAVES_SNOW] = &def;
+    
+else if (def.m_name == "RedstoneWireDot")    s_blockDefsByType[BLOCK_TYPE_REDSTONE_WIRE_DOT] = &def;
+        else if (def.m_name == "RedstoneWireNS")     s_blockDefsByType[BLOCK_TYPE_REDSTONE_WIRE_NS] = &def;
+        else if (def.m_name == "RedstoneWireEW")     s_blockDefsByType[BLOCK_TYPE_REDSTONE_WIRE_EW] = &def;
+        else if (def.m_name == "RedstoneWireCorner") s_blockDefsByType[BLOCK_TYPE_REDSTONE_WIRE_CORNER] = &def;
+        else if (def.m_name == "RedstoneWireCross")  s_blockDefsByType[BLOCK_TYPE_REDSTONE_WIRE_CROSS] = &def;
+
+        // --- Redstone 火把 / 方块 / 灯 ---
+        else if (def.m_name == "RedstoneTorch")      s_blockDefsByType[BLOCK_TYPE_REDSTONE_TORCH] = &def;
+        else if (def.m_name == "RedstoneTorchOff")   s_blockDefsByType[BLOCK_TYPE_REDSTONE_TORCH_OFF] = &def;
+        else if (def.m_name == "RedstoneBlock")      s_blockDefsByType[BLOCK_TYPE_REDSTONE_BLOCK] = &def;
+
+        else if (def.m_name == "RedstoneLamp")       s_blockDefsByType[BLOCK_TYPE_REDSTONE_LAMP] = &def;
+        else if (def.m_name == "RedstoneLampOn")     s_blockDefsByType[BLOCK_TYPE_REDSTONE_LAMP_ON] = &def;
+
+        // --- Redstone 逻辑元件 ---
+        else if (def.m_name == "RepeaterOff")        s_blockDefsByType[BLOCK_TYPE_REPEATER_OFF] = &def;
+        else if (def.m_name == "RepeaterOn")         s_blockDefsByType[BLOCK_TYPE_REPEATER_ON] = &def;
+
+        else if (def.m_name == "Lever")              s_blockDefsByType[BLOCK_TYPE_LEVER] = &def;
+        else if (def.m_name == "StoneButton")        s_blockDefsByType[BLOCK_TYPE_BUTTON_STONE] = &def;
+
+        else if (def.m_name == "Piston")             s_blockDefsByType[BLOCK_TYPE_PISTON] = &def;
+        else if (def.m_name == "StickyPiston")       s_blockDefsByType[BLOCK_TYPE_STICKY_PISTON] = &def;
+        else if (def.m_name == "PistonHead")         s_blockDefsByType[BLOCK_TYPE_PISTON_HEAD] = &def;
+
+        else if (def.m_name == "Observer")           s_blockDefsByType[BLOCK_TYPE_OBSERVER] = &def;
+        //else if (def.m_name == "NoteBlock")          s_blockDefsByType[BLOCK_TYPE_NOTE_BLOCK] = &def;
+
+        else if (def.m_name == "Farmland")           s_blockDefsByType[BLOCK_TYPE_FARMLAND] = &def;
+        else if (def.m_name == "WetFarmland")           s_blockDefsByType[BLOCK_TYPE_FARMLAND_WET] = &def;
+
+        else if (def.m_name == "Wheat0")             s_blockDefsByType[BLOCK_TYPE_WHEAT_0] = &def;
+        else if (def.m_name == "Wheat1")             s_blockDefsByType[BLOCK_TYPE_WHEAT_1] = &def;
+        else if (def.m_name == "Wheat2")             s_blockDefsByType[BLOCK_TYPE_WHEAT_2] = &def;
+        else if (def.m_name == "Wheat3")             s_blockDefsByType[BLOCK_TYPE_WHEAT_3] = &def;
+        else if (def.m_name == "Wheat4")             s_blockDefsByType[BLOCK_TYPE_WHEAT_4] = &def;
+        else if (def.m_name == "Wheat5")             s_blockDefsByType[BLOCK_TYPE_WHEAT_5] = &def;
+        else if (def.m_name == "Wheat6")             s_blockDefsByType[BLOCK_TYPE_WHEAT_6] = &def;
+        else if (def.m_name == "Wheat7")             s_blockDefsByType[BLOCK_TYPE_WHEAT_7] = &def;
+
+        else if (def.m_name == "Carrots0")           s_blockDefsByType[BLOCK_TYPE_CARROTS_0] = &def;
+        else if (def.m_name == "Carrots1")           s_blockDefsByType[BLOCK_TYPE_CARROTS_1] = &def;
+        else if (def.m_name == "Carrots2")           s_blockDefsByType[BLOCK_TYPE_CARROTS_2] = &def;
+        else if (def.m_name == "Carrots3")           s_blockDefsByType[BLOCK_TYPE_CARROTS_3] = &def;
+
+        else if (def.m_name == "Beetroots0")         s_blockDefsByType[BLOCK_TYPE_BEETROOTS_0] = &def;
+        else if (def.m_name == "Beetroots1")         s_blockDefsByType[BLOCK_TYPE_BEETROOTS_1] = &def;
+        else if (def.m_name == "Beetroots2")         s_blockDefsByType[BLOCK_TYPE_BEETROOTS_2] = &def;
+        else if (def.m_name == "Beetroots3")         s_blockDefsByType[BLOCK_TYPE_BEETROOTS_3] = &def;
+
+        else if (def.m_name == "Potatoes0")          s_blockDefsByType[BLOCK_TYPE_POTATOES_0] = &def;
+        else if (def.m_name == "Potatoes1")          s_blockDefsByType[BLOCK_TYPE_POTATOES_1] = &def;
+        else if (def.m_name == "Potatoes2")          s_blockDefsByType[BLOCK_TYPE_POTATOES_2] = &def;
+        else if (def.m_name == "Potatoes3")          s_blockDefsByType[BLOCK_TYPE_POTATOES_3] = &def;
+
+        else if (def.m_name == "PumpkinStem0") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_0] = &def;
+        else if (def.m_name == "PumpkinStem1") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_1] = &def;
+        else if (def.m_name == "PumpkinStem2") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_2] = &def;
+        else if (def.m_name == "PumpkinStem3") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_3] = &def;
+        else if (def.m_name == "PumpkinStem4") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_4] = &def;
+        else if (def.m_name == "PumpkinStem5") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_5] = &def;
+        else if (def.m_name == "PumpkinStem6") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_6] = &def;
+        else if (def.m_name == "PumpkinStem7") s_blockDefsByType[BLOCK_TYPE_PUMPKIN_STEM_7] = &def;
+
+        else if (def.m_name == "MelonStem0")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_0] = &def;
+        else if (def.m_name == "MelonStem1")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_1] = &def;
+        else if (def.m_name == "MelonStem2")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_2] = &def;
+        else if (def.m_name == "MelonStem3")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_3] = &def;
+        else if (def.m_name == "MelonStem4")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_4] = &def;
+        else if (def.m_name == "MelonStem5")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_5] = &def;
+        else if (def.m_name == "MelonStem6")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_6] = &def;
+        else if (def.m_name == "MelonStem7")   s_blockDefsByType[BLOCK_TYPE_MELON_STEM_7] = &def;
+    	
+        else if (def.m_name == "Pumpkin") s_blockDefsByType[BLOCK_TYPE_PUMPKIN] = &def;
+        else if (def.m_name == "Melon")   s_blockDefsByType[BLOCK_TYPE_MELON]   = &def;
+
+        // --- Sugar cane / 水草 / 珊瑚 / 海绵 ---
+        else if (def.m_name == "SugarCane")          s_blockDefsByType[BLOCK_TYPE_SUGAR_CANE] = &def;
+
+        else if (def.m_name == "Kelp")               s_blockDefsByType[BLOCK_TYPE_KELP] = &def;
+        else if (def.m_name == "KelpTop")            s_blockDefsByType[BLOCK_TYPE_KELP_TOP] = &def;
+
+        else if (def.m_name == "Seagrass")           s_blockDefsByType[BLOCK_TYPE_SEAGRASS] = &def;
+        else if (def.m_name == "TallSeagrassBottom") s_blockDefsByType[BLOCK_TYPE_TALL_SEAGRASS_BOTTOM] = &def;
+        else if (def.m_name == "TallSeagrassTop")    s_blockDefsByType[BLOCK_TYPE_TALL_SEAGRASS_TOP] = &def;
+
+        else if (def.m_name == "CoralBlock")         s_blockDefsByType[BLOCK_TYPE_CORAL_BLOCK_RED] = &def;
+        else if (def.m_name == "CoralPurple")         s_blockDefsByType[BLOCK_TYPE_CORAL_BLOCK_PURPLE] = &def;
+        else if (def.m_name == "CoralYellow")           s_blockDefsByType[BLOCK_TYPE_CORAL_BLOCK_YELLOW] = &def;
+        else if (def.m_name == "DeadCoralBlock")     s_blockDefsByType[BLOCK_TYPE_CORAL_BLOCK_DEAD] = &def;
+        else if (def.m_name == "DeadCoralFan")       s_blockDefsByType[BLOCK_TYPE_CORAL_BLOCK_FAN_DEAD] = &def;
+
+        else if (def.m_name == "Sponge")             s_blockDefsByType[BLOCK_TYPE_SPONGE] = &def;
+        else if (def.m_name == "WetSponge")          s_blockDefsByType[BLOCK_TYPE_WET_SPONGE] = &def;
+
+        // else if (def.m_name == "SeaLantern")         s_blockDefsByType[BLOCK_TYPE_SEA_LANTERN] = &def;
+        // else if (def.m_name == "Campfire")           s_blockDefsByType[BLOCK_TYPE_CAMPFIRE] = &def;
+
+    	// Nether wart growth stages
+        else if (def.m_name == "NetherWart0") s_blockDefsByType[BLOCK_TYPE_NETHER_WART_0] = &def;
+        else if (def.m_name == "NetherWart1") s_blockDefsByType[BLOCK_TYPE_NETHER_WART_1] = &def;
+        else if (def.m_name == "NetherWart2") s_blockDefsByType[BLOCK_TYPE_NETHER_WART_2] = &def;
+        else if (def.m_name == "NetherWart3") s_blockDefsByType[BLOCK_TYPE_NETHER_WART_3] = &def;
+        else if (def.m_name == "SoulSand") s_blockDefsByType[BLOCK_TYPE_SOUL_SAND] = &def;
+
+    	// Fish / Turtle eggs
+        else if (def.m_name == "FishEgg")         s_blockDefsByType[BLOCK_TYPE_FISH_EGG] = &def;
+        else if (def.m_name == "FishEggHatching") s_blockDefsByType[BLOCK_TYPE_FISH_EGG_HATCHING] = &def;
+
     }
 }
 

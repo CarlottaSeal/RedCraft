@@ -52,6 +52,13 @@ void RedstoneSimulator::Update(float deltaSeconds)
         // 处理侦测器脉冲结束
         ProcessObserverUpdates();
     }
+    
+    m_lastBurnoutCleanup += deltaSeconds;
+    if (m_lastBurnoutCleanup >= 10.0f)
+    {
+        m_lastBurnoutCleanup = 0.0f;
+        CleanupBurnoutTracker();
+    }
 }
 
 void RedstoneSimulator::ScheduleUpdate(const BlockIterator& block, uint8_t delayTicks)
@@ -189,7 +196,7 @@ bool RedstoneSimulator::IsPistonPowered(const BlockIterator& block) const
         if (type == BLOCK_TYPE_REDSTONE_TORCH && (Direction)dir != DIRECTION_UP)
             return true;
         
-        if ((type == BLOCK_TYPE_LEVER || type == BLOCK_TYPE_BUTTON_STONE || type == BLOCK_TYPE_BUTTON_WOOD) 
+        if ((type == BLOCK_TYPE_LEVER || type == BLOCK_TYPE_BUTTON_STONE) 
             && nb->GetSpecialState())
             return true;
         
@@ -300,7 +307,7 @@ void RedstoneSimulator::ProcessBlockUpdate(const BlockIterator& block)
         UpdatePiston(block);
         break;
     case BLOCK_TYPE_BUTTON_STONE:
-    case BLOCK_TYPE_BUTTON_WOOD:
+    //case BLOCK_TYPE_BUTTON_WOOD:
         UpdateButton(block);
         break;
     }
@@ -373,8 +380,7 @@ uint8_t RedstoneSimulator::GetDirectPowerInput(const BlockIterator& block) const
             return 15;
         }
         // 按下的按钮：向所有方向输出15
-        if ((neighborType == BLOCK_TYPE_BUTTON_STONE || 
-             neighborType == BLOCK_TYPE_BUTTON_WOOD) && 
+        if ((neighborType == BLOCK_TYPE_BUTTON_STONE) && 
             nb->GetSpecialState())
         {
             return 15;
@@ -822,47 +828,30 @@ void RedstoneSimulator::UpdateLamp(const BlockIterator& block)
     if (lampType != BLOCK_TYPE_REDSTONE_LAMP && 
         lampType != BLOCK_TYPE_REDSTONE_LAMP_ON)
         return;
-    //检查是否有红石信号输入
+        
     bool powered = IsPowered(block);
     bool isCurrentlyOn = (lampType == BLOCK_TYPE_REDSTONE_LAMP_ON);
     
     if (powered && !isCurrentlyOn)
     {
+        // 开灯：立即
         lamp->m_typeIndex = BLOCK_TYPE_REDSTONE_LAMP_ON;
-        
-        // 标记区块需要重建网格（纹理变化）
         MarkChunkDirty(block);
-        // 更新光照系统（灯发出15级光）
         UpdateLampLighting(block, true);
     }
     else if (!powered && isCurrentlyOn)
     {
-        // TODO：Minecraft中红石灯有2tick的关闭延迟
-        lamp->m_typeIndex = BLOCK_TYPE_REDSTONE_LAMP;
+        // ✅ 关灯：延迟2 tick (MC标准)
+        ScheduleUpdate(block, 2);
         
-        MarkChunkDirty(block);
-        UpdateLampLighting(block, false);
+        // 检查是否真的应该关闭（延迟结束后再次检查）
+        if (!IsPowered(block))
+        {
+            lamp->m_typeIndex = BLOCK_TYPE_REDSTONE_LAMP;
+            MarkChunkDirty(block);
+            UpdateLampLighting(block, false);
+        }
     }
-    // Block* lamp = block.GetBlock();
-    // if (!lamp)
-    //     return;
-    //
-    // bool powered = IsPowered(block);
-    // bool isOn = (lamp->m_typeIndex == BLOCK_TYPE_REDSTONE_LAMP_ON);
-    //
-    // if (powered && !isOn)
-    // {
-    //     lamp->m_typeIndex = BLOCK_TYPE_REDSTONE_LAMP_ON;
-    //     MarkChunkDirty(block);
-    //     // 更新光照
-    //     m_world->MarkLightingDirty(block);
-    // }
-    // else if (!powered && isOn)
-    // {
-    //     lamp->m_typeIndex = BLOCK_TYPE_REDSTONE_LAMP;
-    //     MarkChunkDirty(block);
-    //     m_world->MarkLightingDirty(block);
-    // }
 }
 
 void RedstoneSimulator::UpdateLampLighting(const BlockIterator& block, bool turnOn)
@@ -907,6 +896,28 @@ void RedstoneSimulator::UpdateLampLighting(const BlockIterator& block, bool turn
     }
 }
 
+void RedstoneSimulator::CleanupBurnoutTracker()
+{
+    if (!m_world || !m_world->m_owner || !m_world->m_owner->m_gameClock)
+        return;
+        
+    float currentTime = (float)m_world->m_owner->m_gameClock->GetTotalSeconds();
+    
+    auto it = m_torchBurnoutTracker.begin();
+    while (it != m_torchBurnoutTracker.end())
+    {
+        // 清理超过2秒无活动的条目
+        if (currentTime - it->second.m_timestamp > 2.0f)
+        {
+            it = m_torchBurnoutTracker.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
 void RedstoneSimulator::UpdatePiston(const BlockIterator& block)
 {
     Block* piston = block.GetBlock();
@@ -934,153 +945,248 @@ void RedstoneSimulator::UpdatePiston(const BlockIterator& block)
 void RedstoneSimulator::TryExtendPiston(const BlockIterator& block)
 {
     Block* piston = block.GetBlock();
-    if (!piston)
+    if (piston->IsPistonExtended())
         return;
-    
-    Direction facing = GetPistonFacing(piston);
-    bool isSticky = (piston->m_typeIndex == BLOCK_TYPE_STICKY_PISTON);
-    
-    // 收集要推动的方块
-    std::vector<IntVec3> blocksToPush;
-    std::vector<IntVec3> blocksToDestroy;
-    
-    if (!CalculatePushList(block, facing, blocksToPush, blocksToDestroy))
-    {
-        // 无法推动
+    if (!IsPistonPowered(block))
         return;
-    }
-    
-    // ===== 执行推动 =====
-    
-    // 1. 销毁需要销毁的方块（如火把、红石线等）
-    for (const IntVec3& pos : blocksToDestroy)
-    {
-        BlockIterator iter = m_world->GetBlockIterator(pos);
-        if (iter.IsValid())
-        {
-            Block* b = iter.GetBlock();
-            if (b)
-            {
-                // 可选：掉落物品
-                // DropBlockItem(iter);
-                
-                b->SetType(BLOCK_TYPE_AIR);
-                MarkChunkDirty(iter);
-            }
-        }
-    }
-    
-    // 2. 从最远的方块开始移动（避免覆盖）
-    // 按距离活塞的距离排序（远的先移动）
-    std::sort(blocksToPush.begin(), blocksToPush.end(),
-        [&](const IntVec3& a, const IntVec3& b) {
-            IntVec3 pistonPos = block.GetGlobalCoords();
-            return GetTaxicabDistance3D(a, pistonPos) > 
-                   GetTaxicabDistance3D(b, pistonPos);
-        });
-    
-    for (const IntVec3& srcPos : blocksToPush)
-    {
-        IntVec3 dstPos = srcPos + GetDirectionVector(facing);
-        
-        BlockIterator src = m_world->GetBlockIterator(srcPos);
-        BlockIterator dst = m_world->GetBlockIterator(dstPos);
-        
-        if (src.IsValid() && dst.IsValid())
-        {
-            Block* srcBlock = src.GetBlock();
-            Block* dstBlock = dst.GetBlock();
-            
-            // 复制方块数据
-            *dstBlock = *srcBlock;
-            
-            // 清空源位置
-            srcBlock->SetType(BLOCK_TYPE_AIR);
-            srcBlock->m_redstoneData = 0;
-            
-            MarkChunkDirty(src);
-            MarkChunkDirty(dst);
-            
-            // 触发红石更新
-            ScheduleNeighborUpdates(dst);
-        }
-    }
-    
-    // 3. 放置活塞头
-    BlockIterator headPos = block.GetNeighborCrossBoundary(facing);
-    if (headPos.IsValid())
-    {
-        Block* head = headPos.GetBlock();
-        head->SetType(BLOCK_TYPE_PISTON_HEAD);
-        head->SetBlockFacing((uint8_t)facing);
-        
-        // 标记是否为粘性活塞头
-        if (isSticky)
-        {
-            head->SetRedstonePower(head->GetRedstonePower() | 0x08);
-        }
-        
-        MarkChunkDirty(headPos);
-    }
-    
-    // 4. 标记活塞为已伸出
-    SetPistonExtended(piston, true);
-    MarkChunkDirty(block);
+    ExtendPiston(block);
+    // Block* piston = block.GetBlock();
+    // if (!piston)
+    //     return;
+    // Direction facing = GetPistonFacing(piston);
+    // bool isSticky = (piston->m_typeIndex == BLOCK_TYPE_STICKY_PISTON);
+    // // 收集要推动的方块
+    // std::vector<IntVec3> blocksToPush;
+    // std::vector<IntVec3> blocksToDestroy;
+    // if (!CalculatePushList(block, facing, blocksToPush, blocksToDestroy))
+    // {
+    //     // 无法推动
+    //     return;
+    // }
+    // //执行推动 
+    // // 1. 销毁需要销毁的方块（如火把、红石线等）
+    // for (const IntVec3& pos : blocksToDestroy)
+    // {
+    //     BlockIterator iter = m_world->GetBlockIterator(pos);
+    //     if (iter.IsValid())
+    //     {
+    //         Block* b = iter.GetBlock();
+    //         if (b)
+    //         {
+    //             // 可选：掉落物品
+    //             // DropBlockItem(iter);
+    //             
+    //             b->SetType(BLOCK_TYPE_AIR);
+    //             MarkChunkDirty(iter);
+    //         }
+    //     }
+    // }
+    // // 2. 从最远的方块开始移动（避免覆盖）
+    // // 按距离活塞的距离排序（远的先移动）
+    // std::sort(blocksToPush.begin(), blocksToPush.end(),
+    //     [&](const IntVec3& a, const IntVec3& b) {
+    //         IntVec3 pistonPos = block.GetGlobalCoords();
+    //         return GetTaxicabDistance3D(a, pistonPos) > 
+    //                GetTaxicabDistance3D(b, pistonPos);
+    //     });
+    // for (const IntVec3& srcPos : blocksToPush)
+    // {
+    //     IntVec3 dstPos = srcPos + GetDirectionVector(facing);
+    //     
+    //     BlockIterator src = m_world->GetBlockIterator(srcPos);
+    //     BlockIterator dst = m_world->GetBlockIterator(dstPos);
+    //     
+    //     if (src.IsValid() && dst.IsValid())
+    //     {
+    //         Block* srcBlock = src.GetBlock();
+    //         Block* dstBlock = dst.GetBlock();
+    //         
+    //         // 复制方块数据
+    //         *dstBlock = *srcBlock;
+    //         
+    //         // 清空源位置
+    //         srcBlock->SetType(BLOCK_TYPE_AIR);
+    //         srcBlock->m_redstoneData = 0;
+    //         
+    //         MarkChunkDirty(src);
+    //         MarkChunkDirty(dst);
+    //         
+    //         // 触发红石更新
+    //         ScheduleNeighborUpdates(dst);
+    //     }
+    // }
+    // // 3. 放置活塞头
+    // BlockIterator headPos = block.GetNeighborCrossBoundary(facing);
+    // if (headPos.IsValid())
+    // {
+    //     Block* head = headPos.GetBlock();
+    //     head->SetType(BLOCK_TYPE_PISTON_HEAD);
+    //     head->SetBlockFacing((uint8_t)facing);
+    //     
+    //     // 标记是否为粘性活塞头
+    //     if (isSticky)
+    //     {
+    //         head->SetRedstonePower(head->GetRedstonePower() | 0x08);
+    //     }
+    //     
+    //     MarkChunkDirty(headPos);
+    // }
+    // // 4. 标记活塞为已伸出
+    // SetPistonExtended(piston, true);
+    // MarkChunkDirty(block);
 }
 
 void RedstoneSimulator::TryRetractPiston(const BlockIterator& block)
 {
     Block* piston = block.GetBlock();
-    if (!piston)
+    if (!piston->IsPistonExtended())
+        return;
+    if (IsPistonPowered(block))
+        return;
+    RetractPiston(block);
+    // Block* piston = block.GetBlock();
+    // if (!piston)
+    //     return;
+    // Direction facing = GetPistonFacing(piston);
+    // bool isSticky = (piston->m_typeIndex == BLOCK_TYPE_STICKY_PISTON);
+    //
+    // // 1. 移除活塞头
+    // BlockIterator headPos = block.GetNeighborCrossBoundary(facing);
+    // if (headPos.IsValid())
+    // {
+    //     Block* head = headPos.GetBlock();
+    //     if (head && head->m_typeIndex == BLOCK_TYPE_PISTON_HEAD)
+    //     {
+    //         head->SetType(BLOCK_TYPE_AIR);
+    //         head->m_redstoneData = 0;
+    //         MarkChunkDirty(headPos);
+    //     }
+    // }
+    // // 2. 粘性活塞：尝试拉回前方方块
+    // if (isSticky)
+    // {
+    //     BlockIterator pullPos = headPos.GetNeighborCrossBoundary(facing);
+    //     if (pullPos.IsValid())
+    //     {
+    //         Block* pullBlock = pullPos.GetBlock();
+    //         if (pullBlock && 
+    //             pullBlock->m_typeIndex != BLOCK_TYPE_AIR &&
+    //             CanBePulled(pullBlock->m_typeIndex))
+    //         {
+    //             // 将方块拉回到活塞头位置
+    //             Block* dst = headPos.GetBlock();
+    //             *dst = *pullBlock;
+    //             
+    //             pullBlock->SetType(BLOCK_TYPE_AIR);
+    //             pullBlock->m_redstoneData = 0;
+    //             
+    //             MarkChunkDirty(headPos);
+    //             MarkChunkDirty(pullPos);
+    //             
+    //             // 触发红石更新
+    //             ScheduleNeighborUpdates(headPos);
+    //             ScheduleNeighborUpdates(pullPos);
+    //         }
+    //     }
+    // }
+    // // 3. 标记活塞为收回状态
+    // SetPistonExtended(piston, false);
+    // MarkChunkDirty(block);
+}
+
+void RedstoneSimulator::ExtendPiston(const BlockIterator& piston)
+{
+    if (!piston.IsValid()) return;
+    
+    Block* pistonBlock = piston.GetBlock();
+    if (!pistonBlock) return;
+    
+    if (pistonBlock->IsPistonExtended()) return;
+    
+    Direction facing = GetPistonFacing(pistonBlock);
+    IntVec3 pistonPos = piston.GetGlobalCoords();
+    IntVec3 headPos = pistonPos + GetDirectionVector(facing);
+    
+    std::vector<IntVec3> blocksToPush;
+    std::vector<IntVec3> blocksToDestroy;
+    
+    if (!CalculatePushList(piston, facing, blocksToPush, blocksToDestroy))
         return;
     
-    Direction facing = GetPistonFacing(piston);
-    bool isSticky = (piston->m_typeIndex == BLOCK_TYPE_STICKY_PISTON);
-    
-    // 1. 移除活塞头
-    BlockIterator headPos = block.GetNeighborCrossBoundary(facing);
-    if (headPos.IsValid())
+    for (int i = (int)blocksToPush.size() - 1; i >= 0; i--)
     {
-        Block* head = headPos.GetBlock();
-        if (head && head->m_typeIndex == BLOCK_TYPE_PISTON_HEAD)
-        {
-            head->SetType(BLOCK_TYPE_AIR);
-            head->m_redstoneData = 0;
-            MarkChunkDirty(headPos);
-        }
+        IntVec3 fromPos = blocksToPush[i];
+        IntVec3 toPos = fromPos + GetDirectionVector(facing);
+        
+        Block fromBlock = m_world->GetBlockAtWorldCoords(fromPos.x, fromPos.y, fromPos.z);
+        //m_world->SetBlockType(toPos.x, toPos.y, toPos.z, fromBlock.m_typeIndex);
+        Block toSet = m_world->GetBlockAtWorldCoords(toPos.x, toPos.y, toPos.z);
+        toSet.SetType(fromBlock.m_typeIndex);
+        
+        fromBlock.SetType(BLOCK_TYPE_AIR);
     }
     
-    // 2. 粘性活塞：尝试拉回前方方块
-    if (isSticky)
+    for (const IntVec3& pos : blocksToDestroy)
     {
-        BlockIterator pullPos = headPos.GetNeighborCrossBoundary(facing);
-        if (pullPos.IsValid())
-        {
-            Block* pullBlock = pullPos.GetBlock();
-            if (pullBlock && 
-                pullBlock->m_typeIndex != BLOCK_TYPE_AIR &&
-                CanBePulled(pullBlock->m_typeIndex))
-            {
-                // 将方块拉回到活塞头位置
-                Block* dst = headPos.GetBlock();
-                *dst = *pullBlock;
-                
-                pullBlock->SetType(BLOCK_TYPE_AIR);
-                pullBlock->m_redstoneData = 0;
-                
-                MarkChunkDirty(headPos);
-                MarkChunkDirty(pullPos);
-                
-                // 触发红石更新
-                ScheduleNeighborUpdates(headPos);
-                ScheduleNeighborUpdates(pullPos);
-            }
-        }
+        Block toDestroy = m_world->GetBlockAtWorldCoords(pos.x, pos.y, pos.z);
+        toDestroy.SetType(BLOCK_TYPE_AIR);
     }
     
-    // 3. 标记活塞为收回状态
-    SetPistonExtended(piston, false);
-    MarkChunkDirty(block);
+    // uint8_t headType = (pistonBlock->m_typeIndex == BLOCK_TYPE_STICKY_PISTON) 
+    //                     ? BLOCK_TYPE_PISTON_HEAD_STICKY 
+    //                     : BLOCK_TYPE_PISTON_HEAD;
+    //m_world->SetBlockType(headPos.x, headPos.y, headPos.z, headType);
+    Block pistonHead = m_world->GetBlockAtWorldCoords(headPos.x, headPos.y, headPos.z);
+    pistonHead.SetType(BLOCK_TYPE_PISTON_HEAD);
+    
+    BlockIterator headIter = m_world->GetBlockIterator(headPos);
+    if (headIter.IsValid())
+    {
+        Block* head = headIter.GetBlock();
+        if (head) 
+            head->SetBlockFacing((uint8_t)facing);
+    }
+    
+    pistonBlock->SetPistonExtended(true);
+    MarkChunkDirty(piston);
+}
+
+void RedstoneSimulator::RetractPiston(const BlockIterator& piston)
+{
+    if (!piston.IsValid()) return;
+    
+    Block* pistonBlock = piston.GetBlock();
+    if (!pistonBlock) return;
+    
+    if (!pistonBlock->IsPistonExtended()) return;
+    
+    Direction facing = GetPistonFacing(pistonBlock);
+    IntVec3 pistonPos = piston.GetGlobalCoords();
+    IntVec3 headPos = pistonPos + GetDirectionVector(facing);
+    
+    Block headBlock = m_world->GetBlockAtWorldCoords(headPos.x, headPos.y, headPos.z);
+    
+    if (headBlock.m_typeIndex == BLOCK_TYPE_PISTON_HEAD )
+    {
+        Block toDestroy = m_world->GetBlockAtWorldCoords(headPos.x, headPos.y, headPos.z);
+        toDestroy.SetType(BLOCK_TYPE_AIR);
+        //m_world->SetBlockType(headPos.x, headPos.y, headPos.z, BLOCK_TYPE_AIR);
+        
+        // if (pistonBlock->m_typeIndex == BLOCK_TYPE_STICKY_PISTON) //TODO 暂时先不做
+        // {
+        //     IntVec3 pullPos = headPos + GetDirectionVector(facing);
+        //     Block pullBlock = m_world->GetBlockAtWorldCoords(pullPos.x, pullPos.y, pullPos.z);
+        //     
+        //     if (CanBePulled(pullBlock.m_typeIndex))
+        //     {
+        //         m_world->SetBlockType(headPos.x, headPos.y, headPos.z, pullBlock.m_typeIndex);
+        //         m_world->SetBlockType(pullPos.x, pullPos.y, pullPos.z, BLOCK_TYPE_AIR);
+        //     }
+        // }
+    }
+    
+    pistonBlock->SetPistonExtended(false);
+    MarkChunkDirty(piston);
 }
 
 bool RedstoneSimulator::CanPushBlockChain(const BlockIterator& start, Direction pushDir, int& chainLength) const
@@ -1122,7 +1228,6 @@ bool RedstoneSimulator::CalculatePushList(const BlockIterator& piston, Direction
     std::queue<IntVec3> toCheck;
     std::unordered_set<int64_t> checked;
     
-    // 从活塞前方开始
     IntVec3 startPos = piston.GetGlobalCoords() + GetDirectionVector(pushDir);
     toCheck.push(startPos);
     
@@ -1138,10 +1243,7 @@ bool RedstoneSimulator::CalculatePushList(const BlockIterator& piston, Direction
         
         BlockIterator iter = m_world->GetBlockIterator(pos);
         if (!iter.IsValid())
-        {
-            // 超出世界范围
             return false;
-        }
         
         Block* b = iter.GetBlock();
         if (!b)
@@ -1149,50 +1251,36 @@ bool RedstoneSimulator::CalculatePushList(const BlockIterator& piston, Direction
         
         uint8_t blockType = b->m_typeIndex;
         
-        // 空气：可以推到这里
         if (blockType == BLOCK_TYPE_AIR)
             continue;
         
-        // 不可推动的方块
         if (!CanBePushed(blockType))
-        {
-            return false;  // 整个推动失败
-        }
+            return false;
         
-        // 会被破坏的方块（火把、红石线等）
         if (IsDestroyedWhenPushed(blockType))
         {
             blocksToDestroy.push_back(pos);
             continue;
         }
         
-        // 可推动的方块
-        blocksToPush.push_back(pos);
-        
-        // 检查推动数量限制
-        if (blocksToPush.size() > MAX_PISTON_PUSH)
+        // 中继器特殊处理：只能从输入/输出方向推动
+        if (blockType == BLOCK_TYPE_REPEATER_OFF || blockType == BLOCK_TYPE_REPEATER_ON)
         {
-            return false;
+            Direction repeaterFacing = (Direction)b->GetBlockFacing();
+            // 只能从正面或背面推动，不能从侧面推动
+            if (pushDir != repeaterFacing && pushDir != GetOppositeDir(repeaterFacing))
+            {
+                return false;  // 侧面推动失败
+            }
         }
         
-        // 继续检查这个方块前方
+        blocksToPush.push_back(pos);
+        
+        if (blocksToPush.size() > MAX_PISTON_PUSH)
+            return false;
+        
         IntVec3 nextPos = pos + GetDirectionVector(pushDir);
         toCheck.push(nextPos);
-        
-        // // 检查粘性方块连接（史莱姆块、蜂蜜块）<-先不做
-        // if (IsStickyBlock(blockType))
-        // {
-        //     // 添加相邻的可推动方块
-        //     for (int dir = 0; dir < NUM_DIRECTIONS; dir++)
-        //     {
-        //         if ((Direction)dir == pushDir || 
-        //             (Direction)dir == GetOppositeDir(pushDir))
-        //             continue;
-        //         
-        //         IntVec3 adjacentPos = pos + GetDirectionVector((Direction)dir);
-        //         toCheck.push(adjacentPos);
-        //     }
-        // }
     }
     
     return true;
@@ -1286,8 +1374,7 @@ bool RedstoneSimulator::IsBlockReceivingPower(const BlockIterator& block) const
             return true;
         
         // 按下的按钮
-        if ((neighborType == BLOCK_TYPE_BUTTON_STONE || 
-             neighborType == BLOCK_TYPE_BUTTON_WOOD) && 
+        if ((neighborType == BLOCK_TYPE_BUTTON_STONE ) && 
             nb->GetSpecialState())
             return true;
         
@@ -1339,7 +1426,7 @@ bool RedstoneSimulator::IsDestroyedWhenPushed(uint8_t blockType) const
     case BLOCK_TYPE_REDSTONE_TORCH_OFF:
     case BLOCK_TYPE_LEVER:
     case BLOCK_TYPE_BUTTON_STONE:
-    case BLOCK_TYPE_BUTTON_WOOD:
+    //case BLOCK_TYPE_BUTTON_WOOD:
         return true;
     default:
         return false;
@@ -1747,8 +1834,7 @@ void RedstoneSimulator::UpdateButton(const BlockIterator& block)
     if (!button)
         return;
     uint8_t buttonType = button->m_typeIndex;
-    if (buttonType != BLOCK_TYPE_BUTTON_STONE && 
-        buttonType != BLOCK_TYPE_BUTTON_WOOD)
+    if (buttonType != BLOCK_TYPE_BUTTON_STONE)
         return;
     // 如果按钮是按下状态，弹起
     if (button->GetSpecialState())
@@ -2003,8 +2089,7 @@ void RedstoneSimulator::PressButton(const BlockIterator& block)
     if (!button)
         return;
     uint8_t buttonType = button->m_typeIndex;
-    if (buttonType != BLOCK_TYPE_BUTTON_STONE && 
-        buttonType != BLOCK_TYPE_BUTTON_WOOD)
+    if (buttonType != BLOCK_TYPE_BUTTON_STONE)
         return;
     // 如果已经按下，忽略
     if (button->GetSpecialState())
@@ -2097,22 +2182,36 @@ WireConnections RedstoneSimulator::GetWireConnections(const BlockIterator& block
 
 WireConnection RedstoneSimulator::GetWireConnectionInDirection(const BlockIterator& block, Direction dir) const
 {
-    // ===== 检查同高度连接 =====
+    // 检查同高度连接
     BlockIterator side = block.GetNeighborCrossBoundary(dir);
     if (side.IsValid())
     {
         Block* sideBlock = side.GetBlock();
         if (sideBlock)
         {
-            // 直接连接到红石组件
-            if (CanConnectToRedstone(sideBlock->m_typeIndex, GetOppositeDir(dir)))
+            uint8_t type = sideBlock->m_typeIndex;
+            
+            // 中继器特殊处理：只在输入/输出方向连接
+            if (type == BLOCK_TYPE_REPEATER_OFF || type == BLOCK_TYPE_REPEATER_ON)
+            {
+                Direction repeaterFacing = (Direction)sideBlock->GetBlockFacing();
+                // 红石线只连接到中继器的输入端（背面）或输出端（正面）
+                if (repeaterFacing == dir || GetOppositeDir(repeaterFacing) == dir)
+                {
+                    return WireConnection::SIDE;
+                }
+                return WireConnection::NONE;  // 侧面不连接
+            }
+            
+            // 其他方块
+            if (CanConnectToRedstone(side, GetOppositeDir(dir)))
             {
                 return WireConnection::SIDE;
             }
         }
     }
     
-    // ===== 检查向上连接（爬升） =====
+    // 检查向上连接（爬升）
     if (side.IsValid())
     {
         Block* sideBlock = side.GetBlock();
@@ -2141,7 +2240,7 @@ WireConnection RedstoneSimulator::GetWireConnectionInDirection(const BlockIterat
         }
     }
     
-    // ===== 检查向下连接（下降） =====
+    //检查向下连接（下降） 
     BlockIterator below = block.GetNeighborCrossBoundary(DIRECTION_DOWN);
     if (below.IsValid())
     {
@@ -2168,10 +2267,20 @@ WireConnection RedstoneSimulator::GetWireConnectionInDirection(const BlockIterat
     return WireConnection::NONE;
 }
 
-bool RedstoneSimulator::CanConnectToRedstone(uint8_t blockType, Direction fromDir) const
+bool RedstoneSimulator::CanConnectToRedstone(const BlockIterator& block, Direction fromDir) const
 {
+    if (!block.IsValid())
+        return false;
+    
+    Block* b = block.GetBlock();
+    if (!b)
+        return false;
+    
+    uint8_t blockType = b->m_typeIndex;
+    
     if (IsRedstoneWire(blockType))
         return true;
+    
     switch (blockType)
     {
     case BLOCK_TYPE_REDSTONE_BLOCK:
@@ -2179,25 +2288,62 @@ bool RedstoneSimulator::CanConnectToRedstone(uint8_t blockType, Direction fromDi
     case BLOCK_TYPE_REDSTONE_TORCH_OFF:
     case BLOCK_TYPE_LEVER:
     case BLOCK_TYPE_BUTTON_STONE:
-    case BLOCK_TYPE_BUTTON_WOOD:
-        return true;
-        
-    case BLOCK_TYPE_REPEATER_OFF:
-    case BLOCK_TYPE_REPEATER_ON:
-        // 中继器只在输入/输出方向连接
-        // 需要检查中继器朝向
-        return true;  // 简化：始终连接 TODO: 实现方向检查
-        
+    //case BLOCK_TYPE_BUTTON_WOOD:
     case BLOCK_TYPE_REDSTONE_LAMP:
     case BLOCK_TYPE_REDSTONE_LAMP_ON:
-        return true;
-        
     case BLOCK_TYPE_PISTON:
     case BLOCK_TYPE_STICKY_PISTON:
         return true;
-        
+    
+        // 中继器：只在输入/输出方向连接
+    case BLOCK_TYPE_REPEATER_OFF:
+    case BLOCK_TYPE_REPEATER_ON:
+        {
+            Direction repeaterFacing = (Direction)b->GetBlockFacing();
+            // fromDir 是"红石线到中继器"的方向
+            // 中继器接收来自背面的输入，向正面输出
+            return (fromDir == GetOppositeDir(repeaterFacing) ||  // 输入端（背面）
+                    fromDir == repeaterFacing);                     // 输出端（正面）
+        }
+    
+        //侦测器：只在输出方向连接
+    case BLOCK_TYPE_OBSERVER:
+        {
+            Direction observerFacing = GetObserverFacing(b);
+            Direction outputDir = GetOppositeDir(observerFacing);
+            return (fromDir == outputDir);  // 只在输出端连接
+        }
+    
     default:
         return false;
+    }
+}
+
+void RedstoneSimulator::GetPerpendicularDirectionsForLeftAndRight(Direction facing, Direction& leftDir,
+    Direction& rightDir) const
+{
+    switch (facing)
+    {
+    case DIRECTION_NORTH:  // +Y
+        leftDir = DIRECTION_WEST;   // -X
+        rightDir = DIRECTION_EAST;  // +X
+        break;
+    case DIRECTION_SOUTH:  // -Y
+        leftDir = DIRECTION_EAST;   // +X
+        rightDir = DIRECTION_WEST;  // -X
+        break;
+    case DIRECTION_EAST:   // +X
+        leftDir = DIRECTION_NORTH;  // +Y
+        rightDir = DIRECTION_SOUTH; // -Y
+        break;
+    case DIRECTION_WEST:   // -X
+        leftDir = DIRECTION_SOUTH;  // -Y
+        rightDir = DIRECTION_NORTH; // +Y
+        break;
+    default:
+        leftDir = DIRECTION_NORTH;
+        rightDir = DIRECTION_SOUTH;
+        break;
     }
 }
 

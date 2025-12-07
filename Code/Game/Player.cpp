@@ -26,12 +26,10 @@ Player::Player(Game* owner, Vec3 const& startPos)
 	// Initialize orientation
 	m_orientation = EulerAngles(45.0f, 0.0f, 0.0f);
 	
-	// Create game camera
 	m_gameCamera = new GameCamera();
 	m_gameCamera->SetPosition(GetEyePosition());
 	m_gameCamera->SetOrientation(m_orientation);
 	
-	// Initialize world camera
 	m_worldCamera.SetPosition(GetEyePosition());
 	m_worldCamera.SetOrientation(m_orientation);
 }
@@ -51,7 +49,6 @@ void Player::Update(float deltaSeconds)
 	
 	Entity::Update(deltaSeconds);
 	
-	// Update game camera
 	if (m_gameCamera)
 	{
 		m_gameCamera->Update(deltaSeconds, this, m_game->m_currentWorld);
@@ -78,7 +75,6 @@ void Player::UpdateInput(float deltaSeconds)
 	{
 		CyclePhysicsMode();
 	}
-	
 	if (g_theInput->WasKeyJustPressed('C'))
 	{
 		CycleCameraMode();
@@ -96,26 +92,21 @@ void Player::UpdateInput(float deltaSeconds)
 			cameraMode == GameCameraMode::FIXED_ANGLE_TRACKING ||
 			cameraMode == GameCameraMode::INDEPENDENT)
 		{
-			// Mouse look
 			Vec2 mouseDelta = g_theInput->GetCursorClientDelta();
 			m_orientation.m_yawDegrees -= mouseDelta.x * 0.075f;
 			m_orientation.m_pitchDegrees += mouseDelta.y * 0.075f;
 			
-			// Controller look
 			m_orientation.m_yawDegrees -= controller.GetRightStick().GetPosition().x * 90.0f * deltaSeconds;
 			m_orientation.m_pitchDegrees += controller.GetRightStick().GetPosition().y * 90.0f * deltaSeconds;
 			
-			// Clamp pitch
 			m_orientation.m_pitchDegrees = GetClamped(m_orientation.m_pitchDegrees, -85.0f, 85.0f);
 			m_orientation.m_yawDegrees = fmodf(m_orientation.m_yawDegrees, 360.0f);
 		}
 	}
 	
-	// Movement input
 	UpdateFromKeyboard(deltaSeconds);
 	UpdateFromController(deltaSeconds);
 	
-	// Jump
 	if (g_theInput->IsKeyDown(KEYCODE_SPACE) || controller.IsButtonDown(XboxButtonID::A))
 	{
 		Jump();
@@ -124,10 +115,8 @@ void Player::UpdateInput(float deltaSeconds)
 
 void Player::UpdateFromKeyboard(float deltaSeconds)
 {
-	// Check for run
 	m_isRunning = g_theInput->IsKeyDown(KEYCODE_SHIFT);
 	
-	// Update speed based on running
 	if (m_isRunning)
 	{
 		m_maxSpeed = m_runSpeed;
@@ -139,13 +128,11 @@ void Player::UpdateFromKeyboard(float deltaSeconds)
 		m_flySpeed = m_normalSpeed * 2.0f;
 	}
 	
-	// Build movement direction
 	Vec3 moveDir = Vec3();
 	
 	Vec3 forward = GetForwardVector();
 	Vec3 left = GetLeftVector();
 	
-	// For walking mode, flatten forward and left to XY plane
 	if (m_physicsMode == PhysicsMode::WALKING)
 	{
 		forward.z = 0.0f;
@@ -157,7 +144,6 @@ void Player::UpdateFromKeyboard(float deltaSeconds)
 			left = left.GetNormalized();
 	}
 	
-	// WASD movement
 	if (g_theInput->IsKeyDown('W'))
 		moveDir += forward;
 	if (g_theInput->IsKeyDown('S'))
@@ -175,7 +161,6 @@ void Player::UpdateFromKeyboard(float deltaSeconds)
 			moveDir.z -= 1.0f;
 	}
 	
-	// Apply movement
 	if (moveDir.GetLengthSquared() > 0.0f)
 	{
 		MoveInDirection(moveDir, deltaSeconds);
@@ -192,7 +177,6 @@ void Player::UpdateFromController(float deltaSeconds)
 		m_flySpeed = m_runSpeed * 2.0f;
 	}
 	
-	// Left stick for movement
 	Vec2 leftStick = controller.GetLeftStick().GetPosition();
 	if (leftStick.GetLengthSquared() > 0.01f)
 	{

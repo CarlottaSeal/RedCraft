@@ -129,6 +129,72 @@ Rgba8 GetRedstoneWireColor(uint8_t power)
 	return Rgba8(r, g, b, 255);
 }
 
+Rgba8 GetCropGrowthColor(uint8_t type)
+{
+    float t = 1.0f;
+    // // 小麦：8 阶段
+    // if (type >= BLOCK_TYPE_WHEAT_0 && type <= BLOCK_TYPE_WHEAT_7)
+    // {
+    //     t = (float)(type - BLOCK_TYPE_WHEAT_0) / 7.0f;
+    // }
+    // // 胡萝卜：4 阶段
+    // else if (type >= BLOCK_TYPE_CARROTS_0 && type <= BLOCK_TYPE_CARROTS_3)
+    // {
+    //     t = (float)(type - BLOCK_TYPE_CARROTS_0) / 3.0f;
+    // }
+    // // 土豆：4 阶段
+    // else if (type >= BLOCK_TYPE_POTATOES_0 && type <= BLOCK_TYPE_POTATOES_3)
+    // {
+    //     t = (float)(type - BLOCK_TYPE_POTATOES_0) / 3.0f;
+    // }
+    // // 甜菜根：4 阶段（注意你枚举里叫 BEETROOT_0..3）
+    // else if (type >= BLOCK_TYPE_BEETROOT_0 && type <= BLOCK_TYPE_BEETROOT_3)
+    // {
+    //     t = (float)(type - BLOCK_TYPE_BEETROOT_0) / 3.0f;
+    // }
+    // 南瓜茎：8 阶段
+	if (type >= BLOCK_TYPE_PUMPKIN_STEM_0 && type <= BLOCK_TYPE_PUMPKIN_STEM_7)
+    {
+        t = (float)(type - BLOCK_TYPE_PUMPKIN_STEM_0) / 7.0f;
+    }
+    // 西瓜茎：8 阶段
+    else if (type >= BLOCK_TYPE_MELON_STEM_0 && type <= BLOCK_TYPE_MELON_STEM_7)
+    {
+        t = (float)(type - BLOCK_TYPE_MELON_STEM_0) / 7.0f;
+    }
+    // // 地狱疣：4 阶段
+    // else if (type >= BLOCK_TYPE_NETHER_WART_0 && type <= BLOCK_TYPE_NETHER_WART_3)
+    // {
+    //     t = (float)(type - BLOCK_TYPE_NETHER_WART_0) / 3.0f;
+    // }
+    // 鱼卵（2 个状态：普通 / 孵化中）
+    else if (type == BLOCK_TYPE_FISH_EGG || type == BLOCK_TYPE_FISH_EGG_HATCHING)
+    {
+        t = (type == BLOCK_TYPE_FISH_EGG) ? 0.0f : 1.0f;
+    }
+    // 海带 / 海草这些如果你也想有“生长程度”感觉，可以简单按 0/1 来：
+    else if (type == BLOCK_TYPE_KELP || type == BLOCK_TYPE_KELP_TOP)
+    {
+        t = (type == BLOCK_TYPE_KELP) ? 0.4f : 1.0f;
+    }
+    else if (type == BLOCK_TYPE_SEAGRASS ||
+             type == BLOCK_TYPE_TALL_SEAGRASS_BOTTOM ||
+             type == BLOCK_TYPE_TALL_SEAGRASS_TOP)
+    {
+        t = (type == BLOCK_TYPE_TALL_SEAGRASS_TOP) ? 1.0f : 0.6f;
+    }
+
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+
+    // 颜色区间：从偏暗偏冷的绿 -> 偏亮偏黄的“成熟”颜色
+    // start = (60, 110, 50), end = (210, 230, 60)
+    uint8_t r = (uint8_t)(60  + t * (210 - 60));
+    uint8_t g = (uint8_t)(110 + t * (230 - 110));
+    uint8_t b = (uint8_t)(50  + t * ( 60 - 50));
+    return Rgba8(r, g, b, 255);
+}
+
 bool IsSolid(uint8_t type)
 {
 	switch (type)
@@ -229,9 +295,9 @@ bool IsRedstonePowerSource(uint8_t blockType)
 	case BLOCK_TYPE_REDSTONE_BLOCK:
 	case BLOCK_TYPE_LEVER:
 	case BLOCK_TYPE_BUTTON_STONE:
-	case BLOCK_TYPE_BUTTON_WOOD:
-	case BLOCK_TYPE_PRESSURE_PLATE_STONE:
-	case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
+	// case BLOCK_TYPE_BUTTON_WOOD:
+	// case BLOCK_TYPE_PRESSURE_PLATE_STONE:
+	// case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
 	case BLOCK_TYPE_REPEATER_ON:
 	case BLOCK_TYPE_OBSERVER:
 		return true;
@@ -269,9 +335,9 @@ bool IsRedstonePowerable(uint8_t blockType)
 	case BLOCK_TYPE_REPEATER_ON:
 	case BLOCK_TYPE_LEVER:
 	case BLOCK_TYPE_BUTTON_STONE:
-	case BLOCK_TYPE_BUTTON_WOOD:
-	case BLOCK_TYPE_PRESSURE_PLATE_STONE:
-	case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
+	// case BLOCK_TYPE_BUTTON_WOOD:
+	// case BLOCK_TYPE_PRESSURE_PLATE_STONE:
+	// case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
 	case BLOCK_TYPE_PISTON:
 	case BLOCK_TYPE_STICKY_PISTON:
 	case BLOCK_TYPE_PISTON_HEAD:
@@ -290,9 +356,9 @@ bool IsPowerSource(uint8_t blockType)
 	case BLOCK_TYPE_REDSTONE_TORCH:
 	case BLOCK_TYPE_LEVER:
 	case BLOCK_TYPE_BUTTON_STONE:
-	case BLOCK_TYPE_BUTTON_WOOD:
-	case BLOCK_TYPE_PRESSURE_PLATE_STONE:
-	case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
+	// case BLOCK_TYPE_BUTTON_WOOD:
+	// case BLOCK_TYPE_PRESSURE_PLATE_STONE:
+	// case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
 	case BLOCK_TYPE_REPEATER_ON:
 		return true;
 	default:
@@ -302,12 +368,57 @@ bool IsPowerSource(uint8_t blockType)
 
 bool IsCrop(uint8_t blockType)
 {
+	return blockType >= BLOCK_TYPE_WHEAT_0 && 
+		   blockType <= BLOCK_TYPE_WET_SPONGE;
+}
+
+bool IsPlantBillboard(uint8_t blockType)
+{
+	// 细杆作物：小麦/胡萝卜/土豆/甜菜
+	if (blockType >= BLOCK_TYPE_WHEAT_0    && blockType <= BLOCK_TYPE_WHEAT_7)    return true;
+	if (blockType >= BLOCK_TYPE_CARROTS_0  && blockType <= BLOCK_TYPE_CARROTS_3)  return true;
+	if (blockType >= BLOCK_TYPE_POTATOES_0 && blockType <= BLOCK_TYPE_POTATOES_3) return true;
+	if (blockType >= BLOCK_TYPE_BEETROOTS_0&& blockType <= BLOCK_TYPE_BEETROOTS_3)return true;
+
+	// 甘蔗
+	if (blockType == BLOCK_TYPE_SUGAR_CANE) return true;
+
+	// 南瓜/西瓜茎
+	if (blockType >= BLOCK_TYPE_PUMPKIN_STEM_0 && blockType <= BLOCK_TYPE_PUMPKIN_STEM_7) return true;
+	if (blockType >= BLOCK_TYPE_MELON_STEM_0   && blockType <= BLOCK_TYPE_MELON_STEM_7)   return true;
+
+	// 地狱疣
+	if (blockType >= BLOCK_TYPE_NETHER_WART_0 && blockType <= BLOCK_TYPE_NETHER_WART_3)   return true;
+
+	// 鱼卵
+	if (blockType == BLOCK_TYPE_FISH_EGG || blockType == BLOCK_TYPE_FISH_EGG_HATCHING)    return true;
+
+	// 海带 & 海草
+	if (blockType == BLOCK_TYPE_KELP ||
+		blockType == BLOCK_TYPE_KELP_TOP ||
+		blockType == BLOCK_TYPE_SEAGRASS ||
+		blockType == BLOCK_TYPE_TALL_SEAGRASS_BOTTOM ||
+		blockType == BLOCK_TYPE_TALL_SEAGRASS_TOP)
+		return true;
+
+	// 珊瑚扇（扁片）
+	if (blockType == BLOCK_TYPE_CORAL_BLOCK_FAN_DEAD)
+		return true;
+
 	return false;
 }
 
 bool IsMatureCrop(uint8_t blockType)
 {
-	return false;
+	return blockType == BLOCK_TYPE_WHEAT_7 ||
+		   blockType == BLOCK_TYPE_CARROTS_3 ||
+			blockType == BLOCK_TYPE_POTATOES_3 ||
+			blockType == BLOCK_TYPE_BEETROOTS_3 ||
+			blockType == BLOCK_TYPE_SUGAR_CANE ||
+				blockType == BLOCK_TYPE_CACTUS ||
+					blockType == BLOCK_TYPE_PUMPKIN||
+						blockType == BLOCK_TYPE_MELON||
+							blockType == BLOCK_TYPE_NETHER_WART_3;
 }
 
 void GetPerpendicularDirectionsForLeftAndRight(Direction facing, Direction& leftDir, Direction& rightDir)

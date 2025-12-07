@@ -10,7 +10,7 @@
 #include "Game/Chunk.h"
 #include "Game/Block.h"
 #include "Game/BlockDefinition.h"
-#include "Gameplay/CropSystem.h"
+#include "Game/Gameplay/CropSystem.h"
 
 FarmMonitorScreen::FarmMonitorScreen(UISystem* uiSystem, World* world)
     : UIScreen(uiSystem, UIScreenType::CUSTOM, true)
@@ -471,7 +471,7 @@ void FarmMonitorScreen::CollectCropData()
     if (!m_world || !m_hasMonitorArea)
         return;
     
-    CropSystem* cropSystem = m_world->GetCropSystem();
+    CropSystem* cropSystem = m_world->m_cropSystem;
     if (!cropSystem)
         return;
     
@@ -490,7 +490,7 @@ void FarmMonitorScreen::CollectCropData()
                     data.m_worldPos = IntVec3(x, y, z);
                     data.m_blockType = block.m_typeIndex;
                     
-                    const GrowableDefinition* def = cropSystem->GetDefinition(block.m_typeIndex);
+                    const CropDefinition* def = CropDefinition::GetDefinition(block.m_typeIndex);;
                     if (def)
                     {
                         data.m_cropName = def->m_name;
@@ -701,7 +701,7 @@ void FarmMonitorScreen::OnHarvestAllClicked()
     if (!m_world)
         return;
     
-    CropSystem* cropSystem = m_world->GetCropSystem();
+    CropSystem* cropSystem = m_world->m_cropSystem;
     if (!cropSystem)
         return;
     
@@ -758,5 +758,6 @@ Texture* FarmMonitorScreen::GetCropTexture(uint8_t blockType) const
     // 从BlockDefinition获取纹理
     // 这里简化处理
     const BlockDefinition& def = BlockDefinition::GetBlockDef(blockType);
-    return def.m_texture;  // 假设BlockDefinition有纹理成员
+    //return def.m_texture;  // 假设BlockDefinition有纹理成员
+    return nullptr;
 }

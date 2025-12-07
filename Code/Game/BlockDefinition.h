@@ -24,6 +24,7 @@ public:
     bool m_isVisible = true;
     bool m_isSolid = true;
     bool m_isOpaque = false;
+    bool m_isTransparent = false; 
 
     IntVec2 m_topSpriteCoords;
     IntVec2 m_bottomSpriteCoords;

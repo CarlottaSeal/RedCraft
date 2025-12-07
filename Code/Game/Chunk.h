@@ -28,6 +28,15 @@ enum class ChunkState : int
     MARKED_FOR_DEACTIVATION  // 标记待停用
 };
 
+struct TransparentFace
+{
+    int vertexStartIndex;  // 在 m_transparentVertices 中的起始索引
+    int indexStartIndex;   // 在 m_transparentIndices 中的起始索引
+    int indexCount;        // 该面使用的索引数量
+    Vec3 centerPos;        // 面的中心位置（世界坐标）
+    float distanceToCamera;// 到相机的距离（用于排序）
+};
+
 class Chunk
 {
     friend class World;
@@ -84,6 +93,9 @@ public:
     ChunkState GetState() const { return m_state.load(); }
     void SetState(ChunkState newState) { m_state.store(newState); }
 
+    void RenderOpaque() const;   
+    void RenderTransparent() const;
+
 public:
     ChunkGenData m_chunkGenData;
     
@@ -92,9 +104,8 @@ protected:
     bool GenerateMesh();
     void GenerateDebug();
     bool ShouldRenderFace(const BlockIterator& iter, Direction direction);
-    void AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blockDef, Direction direction);
-    // void AddWireClimbingFace(std::vector<Vertex_PCU>& verts,const Vec3& basePos,Direction climbDir,const Rgba8& color,
-    //     const Vec2& uvMin,const Vec2& uvMax);
+    void AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blockDef, Direction direction, std::vector<Vertex_PCUTBN>& targetVerts, std::vector<unsigned int>& targetIndices);
+    bool IsBlockTransparent(uint8_t blockType) const;
     bool HandleBlockInteraction(const BlockIterator& block);
     const int* GetFaceIndices(Direction direction);
     IntVec3 GetNeighborBlockCoords(const IntVec3& localCoords, Direction dir);
@@ -102,8 +113,9 @@ protected:
     bool AreAllNeighborsActive() const;
 
     //Rgba8 GetRedstoneWireTint(Block* block);
-    bool NeedsSpecialRendering(uint8_t blockType);
-    void AddRedstoneComponentToMesh(const BlockIterator& iter);
+    bool NeedsSpecialRenderingAsRedstoneComp(uint8_t blockType);
+    void AddCropToMesh(const BlockIterator& iter, std::vector<Vertex_PCUTBN>& targetVerts, std::vector<unsigned int>& targetIndices);
+    void AddRedstoneComponentToMesh(const BlockIterator& iter, std::vector<Vertex_PCUTBN>& targetVerts, std::vector<unsigned int>& targetIndices);
     void AddRedstoneWireToMesh(const BlockIterator& iter);          
     void AddRedstoneTorchToMesh(const BlockIterator& iter);         
     void AddRepeaterToMesh(const BlockIterator& iter);              
@@ -134,6 +146,13 @@ protected:
     IndexBuffer* m_indexBuffer = nullptr;
     std::vector<Vertex_PCUTBN> m_vertices;
     std::vector<unsigned int> m_indices;
+
+    std::vector<Vertex_PCUTBN> m_transparentVertices;
+    std::vector<unsigned int> m_transparentIndices;
+    VertexBuffer* m_transparentVertexBuffer = nullptr;
+    IndexBuffer* m_transparentIndexBuffer = nullptr;
+    std::vector<TransparentFace> m_transparentFaces;
+    
     bool m_isDirty = true;
 
     VertexBuffer* m_vertexBufferDebug = nullptr;

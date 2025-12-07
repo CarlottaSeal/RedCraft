@@ -79,6 +79,8 @@ public:
     void OnBlockRemoved(const BlockIterator& block, uint8_t oldType);
     void OnBlockStateChanged(const BlockIterator& block, uint8_t oldType, uint8_t newType);
 
+    const std::map<IntVec2, Chunk*>& GetActiveChunks();
+    
     void ToggleDebugMode();
     void ToggleDebugPrintingMode();
     bool IsDebugging() const;
@@ -109,6 +111,9 @@ private:
                                       uint8_t& outOutdoorLight, 
                                       uint8_t& outIndoorLight);
 
+    void ScanAndRegisterCropsInChunk(Chunk* chunk);
+    void UnregisterCropsInChunk(const IntVec2& chunkCoords);
+
     void BindWorldConstansBuffer() const;
     void RenderBlockHighlight() const;
 
@@ -123,8 +128,8 @@ public:
 
     BlockHighlight m_highlightedBlock;
 
-    //redstone
     RedstoneSimulator* m_redstoneSimulator = nullptr;
+    CropSystem* m_cropSystem = nullptr;
 
     Shader* m_worldShader = nullptr;
     ConstantBuffer* m_worldConstantBuffer = nullptr;
@@ -142,7 +147,6 @@ public:
     bool m_isRaycastLocked = false;
     GameRaycastResult3D m_currentRaycast;
 
-
 protected:
     std::map<IntVec2, Chunk*> m_activeChunks;
     std::vector<Chunk*> m_visibleChunks;
@@ -154,8 +158,6 @@ protected:
     std::mutex m_processingChunksMutex;
 
     int m_generatingChunksCount = 0; //debugging
-    
-    std::vector<Chunk*> m_chunks;
 
     float m_debugTimer = 0.0f;
 };

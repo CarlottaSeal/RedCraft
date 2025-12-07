@@ -373,6 +373,7 @@
     <ClCompile Include="Gamecommon.cpp" />
     <ClCompile Include="ChunkJob.cpp" />
     <ClCompile Include="Gameplay\CropCommon.cpp" />
+    <ClCompile Include="Gameplay\CropDefinitions.cpp" />
     <ClCompile Include="Gameplay\CropSystem.cpp" />
     <ClCompile Include="Gameplay\RedstoneSimulator.cpp" />
     <ClCompile Include="Generator\BiomeGenerator.cpp" />
@@ -396,6 +397,7 @@
     <ClCompile Include="UI\InventoryScreen.cpp" />
     <ClCompile Include="UI\ItemSlot.cpp" />
     <ClCompile Include="UI\MainMenuScreen.cpp" />
+    <ClCompile Include="UI\GameUIAtlas.cpp" />
     <ClCompile Include="UI\PauseMenuScreen.cpp" />
     <ClCompile Include="UI\RedstoneConfigScreen.cpp" />
     <ClCompile Include="UI\SettingsScreen.cpp" />
@@ -414,6 +416,7 @@
     <ClInclude Include="Gamecommon.hpp" />
     <ClInclude Include="ChunkJob.h" />
     <ClInclude Include="Gameplay\CropCommon.h" />
+    <ClInclude Include="Gameplay\CropDefinitions.h" />
     <ClInclude Include="Gameplay\CropSystem.h" />
     <ClInclude Include="Gameplay\RedstoneCommon.h" />
     <ClInclude Include="Gameplay\RedstoneSimulator.h" />
@@ -438,6 +441,7 @@
     <ClInclude Include="UI\InventoryScreen.h" />
     <ClInclude Include="UI\ItemSlot.h" />
     <ClInclude Include="UI\MainMenuScreen.h" />
+    <ClInclude Include="UI\GameUIAtlas.h" />
     <ClInclude Include="UI\PauseMenuScreen.h" />
     <ClInclude Include="UI\RedstoneConfigScreen.h" />
     <ClInclude Include="UI\SettingsScreen.h" />

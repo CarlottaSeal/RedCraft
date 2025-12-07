@@ -82,8 +82,8 @@ void Game::Startup()
 {
 	World* oldWorld = m_currentWorld;
 
-	Texture* blockTex = g_theRenderer->CreateOrGetTextureFromFile("Data/Images/SpriteSheet_Squirrel_32x.png", true);
-	m_spriteSheet = new SpriteSheet(*blockTex, IntVec2(8,8));
+	Texture* blockTex = g_theRenderer->CreateOrGetTextureFromFile("Data/Images/CustomSheet.png", true);
+	m_spriteSheet = new SpriteSheet(*blockTex, IntVec2(16,16));
 
 	BlockDefinition::InitializeBlockDefs();
 

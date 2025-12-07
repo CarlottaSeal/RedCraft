@@ -38,6 +38,16 @@ Chunk::Chunk(World* owner, IntVec2 chunkCoords)
 
 Chunk::~Chunk()
 {
+    if (m_transparentVertexBuffer != nullptr)
+    {
+        delete m_transparentVertexBuffer;
+        m_transparentVertexBuffer = nullptr;
+    }
+    if (m_transparentIndexBuffer != nullptr)
+    {
+        delete m_transparentIndexBuffer;
+        m_transparentIndexBuffer = nullptr;
+    }
     if (m_vertexBuffer != nullptr)
     {
         delete m_vertexBuffer;
@@ -516,12 +526,10 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
     bool wasSky = block->IsSky();
     block->SetType(blockType);
 
-    Direction playerFacing = m_game->m_player->GetOrthoDirection();
+    Direction playerFacing = m_world->m_owner->m_player->GetOrthoDirection();
     if (blockType == BLOCK_TYPE_PISTON ||
         blockType == BLOCK_TYPE_STICKY_PISTON ||
-        blockType == BLOCK_TYPE_OBSERVER ||
-        blockType == BLOCK_TYPE_DISPENSER ||
-        blockType == BLOCK_TYPE_DROPPER)
+        blockType == BLOCK_TYPE_OBSERVER )
     {
         // 这些方块：朝向玩家看的方向（6方向）
         block->SetBlockFacing((uint8_t)playerFacing);
@@ -530,7 +538,7 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
              blockType == BLOCK_TYPE_REPEATER_ON)
     {
         // 中继器：信号输出方向 = 玩家看的方向（只用水平4方向）
-        Direction horizontal = m_game->m_player->GetHorizontalDirection();
+        Direction horizontal = m_world->m_owner->m_player->GetHorizontalDirection();
         block->SetBlockFacing((uint8_t)horizontal);
         block->SetRepeaterDelay(1);  // 默认1档延迟
     }
@@ -548,8 +556,7 @@ void Chunk::PlaceBlock(const IntVec3& localCoords, uint8_t blockType)
         block->SetBlockFacing((uint8_t)DIRECTION_UP);
         block->SetLeverState(false);
     }
-    else if (blockType == BLOCK_TYPE_BUTTON_STONE ||
-             blockType == BLOCK_TYPE_BUTTON_WOOD)
+    else if (blockType == BLOCK_TYPE_BUTTON_STONE)
     {
         // 按钮：附着在地面
         block->SetBlockFacing((uint8_t)DIRECTION_UP);
@@ -827,6 +834,32 @@ std::string Chunk::MakeChunkFilename(const IntVec2& chunkCoords)
     return std::string(name);
 }
 
+void Chunk::RenderOpaque() const
+{
+    if (m_vertexBuffer && m_indexBuffer && !m_vertices.empty())
+    {
+        // g_theRenderer->BindShader(m_world->m_worldShader);
+        // g_theRenderer->SetModelConstants();
+        // g_theRenderer->BindTexture(&m_world->m_owner->m_spriteSheet->GetTexture());
+        g_theRenderer->BindVertexBuffer(m_vertexBuffer);
+        g_theRenderer->BindIndexBuffer(m_indexBuffer);
+        g_theRenderer->DrawIndexBuffer(m_vertexBuffer, m_indexBuffer, (unsigned int)m_indices.size());
+    }
+}
+
+void Chunk::RenderTransparent() const
+{
+    if (m_transparentVertexBuffer && m_transparentIndexBuffer && !m_transparentVertices.empty())
+    {
+        // g_theRenderer->BindShader(m_world->m_worldShader);
+        // g_theRenderer->SetModelConstants();
+        // g_theRenderer->BindTexture(&m_world->m_owner->m_spriteSheet->GetTexture());
+        g_theRenderer->BindVertexBuffer(m_transparentVertexBuffer);
+        g_theRenderer->BindIndexBuffer(m_transparentIndexBuffer);
+        g_theRenderer->DrawIndexBuffer(m_transparentVertexBuffer, m_transparentIndexBuffer, (unsigned int)m_transparentIndices.size());
+    }
+}
+
 void Chunk::GenerateBlocks()
 {
     // m_vertices.clear();
@@ -866,19 +899,16 @@ bool Chunk::GenerateMesh()
         allNeighborsActive = false;
     if (!m_southNeighbor || m_southNeighbor->GetState() != ChunkState::ACTIVE)
         allNeighborsActive = false;
-    
     if (!allNeighborsActive)
     {
-        //DebuggerPrintf("  Chunk (%d, %d) cannot generate mesh - neighbors not ready\n", 
-          //             m_chunkCoords.x, m_chunkCoords.y);
         return false;
     }
     
-    //DebuggerPrintf("  Chunk (%d, %d) generating mesh - SUCCESS\n", 
-      //             m_chunkCoords.x, m_chunkCoords.y);
-    
     m_vertices.clear();
     m_indices.clear();
+    m_transparentVertices.clear();
+    m_transparentIndices.clear();
+    m_transparentFaces.clear();
 
     BlockIterator iter(this, 0);
     for (int blockIndex = 0; blockIndex < CHUNK_TOTAL_BLOCKS; blockIndex++)
@@ -891,19 +921,29 @@ bool Chunk::GenerateMesh()
         if (!blockDef.m_isVisible)
             continue;
 
-        if (NeedsSpecialRendering(iter.GetBlockType()))
-        {
-            AddRedstoneComponentToMesh(iter);
-            continue;  // 跳过普通渲染
-        }
+        bool isTransparent = blockDef.m_isTransparent;
+        std::vector<Vertex_PCUTBN>& targetVerts = isTransparent ? m_transparentVertices : m_vertices;
+        std::vector<unsigned int>& targetIndices = isTransparent ? m_transparentIndices : m_indices;
         
+        if (IsPlantBillboard(iter.GetBlockType()))
+        {
+            AddCropToMesh(iter, targetVerts, targetIndices);
+            continue;
+        }
+
+        if (NeedsSpecialRenderingAsRedstoneComp(iter.GetBlockType()))
+        {
+            // 红石组件通常不透明，使用不透明缓冲
+            AddRedstoneComponentToMesh(iter, m_vertices, m_indices);
+            continue; 
+        }
         for (int dir = 0; dir < NUM_DIRECTIONS; dir++)
         {
             Direction direction = (Direction)dir;
             
             if (ShouldRenderFace(iter, direction))
             {
-                AddFaceToMesh(iter.GetLocalCoords(), blockDef, direction);
+                AddFaceToMesh(iter.GetLocalCoords(), blockDef, direction, targetVerts, targetIndices);
             }
         }
     }
@@ -952,12 +992,13 @@ bool Chunk::ShouldRenderFace(const BlockIterator& iter, Direction direction)
     if (neighborBlock->IsOpaque())
         return false;
     
-    BlockDefinition const& neighborDef = BlockDefinition::GetBlockDef(neighborBlock->m_typeIndex);
-    if (!neighborDef.m_isOpaque)
-        return true;
+    uint8_t currentType = iter.GetBlockType();
+    uint8_t neighborType = neighborBlock->m_typeIndex;
     
-    return false;
-
+    if (currentType == neighborType)
+        return false;
+    
+    return true;
     // IntVec3 localCoords = iter.GetLocalCoords();
     //
     // BlockIterator neighbor = iter.GetNeighbor(direction);
@@ -1005,12 +1046,12 @@ IntVec3 Chunk::GetNeighborBlockCoords(const IntVec3& localCoords, Direction dir)
     }
 }
 
-void Chunk::AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blockDef, Direction direction)
+void Chunk::AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blockDef, Direction direction,
+                          std::vector<Vertex_PCUTBN>& targetVerts, std::vector<unsigned int>& targetIndices)
 {
     BlockIterator iter(this, GetBlockLocalIndexFromLocalCoords(localCoords.x, localCoords.y, localCoords.z));
     BlockIterator neighbor = iter.GetNeighborCrossBoundary(direction);
     
-    // 获取邻居的光照值（如果没有邻居，使用默认值）
     uint8_t neighborOutdoorLight = 15;  
     uint8_t neighborIndoorLight = 0;
     
@@ -1041,35 +1082,35 @@ void Chunk::AddFaceToMesh(const IntVec3& localCoords, const BlockDefinition& blo
     );
     
     const int* faceIndices = GetFaceIndices(direction);
-    size_t startVertIndex = m_vertices.size();
+    size_t startVertIndex = targetVerts.size(); 
     
     for (int i = 0; i < 4; i++)
     {
         int vertIndex = faceIndices[i];
         Vertex_PCUTBN vert = blockDef.m_verts[vertIndex];
         
-        // 更新位置到世界坐标
         vert.m_position += blockWorldPos;
 
-        Rgba8 baseColor = GetRedstoneWireTint(iter.GetBlock());
-        // 设置顶点颜色：R=室外光，G=室内光，B=方向灰度
         vert.m_color = Rgba8(
-            (unsigned char)(outdoorInfluence * 255.0f * baseColor.r),
-            (unsigned char)(indoorInfluence * 255.0f* baseColor.g),
-            (unsigned char)(directionGrayscale * 255.0f* baseColor.b),
-            255
-        );
-        
-        m_vertices.push_back(vert);
+    (unsigned char)(outdoorInfluence * 255.0f),      
+    (unsigned char)(indoorInfluence * 255.0f),       
+    (unsigned char)(directionGrayscale * 255.0f),    
+    255
+);
+        targetVerts.push_back(vert); 
     }
-    
-    m_indices.push_back((unsigned int)(startVertIndex + 0));
-    m_indices.push_back((unsigned int)(startVertIndex + 1));
-    m_indices.push_back((unsigned int)(startVertIndex + 2));
-    
-    m_indices.push_back((unsigned int)(startVertIndex + 0));
-    m_indices.push_back((unsigned int)(startVertIndex + 2));
-    m_indices.push_back((unsigned int)(startVertIndex + 3));
+    targetIndices.push_back((unsigned int)(startVertIndex + 0)); 
+    targetIndices.push_back((unsigned int)(startVertIndex + 1)); 
+    targetIndices.push_back((unsigned int)(startVertIndex + 2)); 
+    targetIndices.push_back((unsigned int)(startVertIndex + 0));
+    targetIndices.push_back((unsigned int)(startVertIndex + 2)); 
+    targetIndices.push_back((unsigned int)(startVertIndex + 3)); 
+}
+
+bool Chunk::IsBlockTransparent(uint8_t blockType) const
+{
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(blockType);
+    return def.m_isTransparent;
 }
 
 void Chunk::AddRedstoneWireToMesh(const BlockIterator& iter)
@@ -1093,6 +1134,15 @@ void Chunk::AddRedstoneWireToMesh(const BlockIterator& iter)
     Vec3 p1 = worldPos + Vec3(1.0f, 0.0f, wireHeight);
     Vec3 p2 = worldPos + Vec3(1.0f, 1.0f, wireHeight);
     Vec3 p3 = worldPos + Vec3(0.0f, 1.0f, wireHeight);
+    if (wire->m_typeIndex == BLOCK_TYPE_REDSTONE_WIRE_CORNER)
+    {
+        // 0: NE, 1: SE, 2: SW, 3: NW（外角方向）:contentReference[oaicite:2]{index=2}
+        // 假设 sprite 画的是 “NE 角”（即 facing == 0 的情况），
+        // 那么 facing=1/2/3 时分别顺时针旋转 90/180/270 度。
+        uint8_t facing = wire->GetBlockFacing();
+        int rotateTimes = static_cast<int>(facing) & 0x03;  // 0~3
+        RotateQuadAroundCenterCW90(p0, p1, p2, p3, rotateTimes);
+    }
     AddVertsForIndexQuad3D(m_vertices, m_indices, p0, p1, p2, p3, color, uvs);
 }
 
@@ -1305,76 +1355,225 @@ void Chunk::AddPistonToMesh(const BlockIterator& iter)
 {
     Block* piston = iter.GetBlock();
     if (!piston) return;
-    
+
     IntVec3 globalCoords = iter.GetGlobalCoords();
     Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
-    
+
     const BlockDefinition& def = BlockDefinition::GetBlockDef(piston->m_typeIndex);
-    AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
-    AABB2 topUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    AABB2 sideUVs   = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+    AABB2 topUVs    = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
     AABB2 bottomUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_bottomSpriteCoords);
-    
+
     Rgba8 color = Rgba8::WHITE;
     bool extended = piston->IsPistonExtended();
-    
+
     float height = extended ? (12.0f / 16.0f) : 1.0f;
     AABB2 actualTopUVs = extended ? sideUVs : topUVs;
-    
-    // 底面
-    AddVertsForIndexQuad3D(m_vertices, m_indices,
-        worldPos + Vec3(0, 1, 0), worldPos + Vec3(1, 1, 0),
-        worldPos + Vec3(1, 0, 0), worldPos + Vec3(0, 0, 0),
-        color, bottomUVs);
-    // 顶面
-    AddVertsForIndexQuad3D(m_vertices, m_indices,
-        worldPos + Vec3(0, 0, height), worldPos + Vec3(1, 0, height),
-        worldPos + Vec3(1, 1, height), worldPos + Vec3(0, 1, height),
-        color, actualTopUVs);
-    // 四个侧面
-    AddVertsForIndexQuad3D(m_vertices, m_indices,
-        worldPos + Vec3(1, 0, 0), worldPos + Vec3(1, 1, 0),
-        worldPos + Vec3(1, 1, height), worldPos + Vec3(1, 0, height),
-        color, sideUVs);
-    AddVertsForIndexQuad3D(m_vertices, m_indices,
-        worldPos + Vec3(0, 1, 0), worldPos + Vec3(0, 0, 0),
-        worldPos + Vec3(0, 0, height), worldPos + Vec3(0, 1, height),
-        color, sideUVs);
-    AddVertsForIndexQuad3D(m_vertices, m_indices,
-        worldPos + Vec3(1, 1, 0), worldPos + Vec3(0, 1, 0),
-        worldPos + Vec3(0, 1, height), worldPos + Vec3(1, 1, height),
-        color, sideUVs);
-    AddVertsForIndexQuad3D(m_vertices, m_indices,
-        worldPos + Vec3(0, 0, 0), worldPos + Vec3(1, 0, 0),
-        worldPos + Vec3(1, 0, height), worldPos + Vec3(0, 0, height),
-        color, sideUVs);
+
+    Direction facing = (Direction)piston->GetBlockFacing();
+
+    // 定义包围盒和前后两面
+    Vec3 mins, maxs;
+    enum Face { FACE_XMIN, FACE_XMAX, FACE_YMIN, FACE_YMAX, FACE_ZMIN, FACE_ZMAX };
+    Face frontFace = FACE_ZMAX;
+    Face backFace  = FACE_ZMIN;
+
+    switch (facing)
+    {
+    case DIRECTION_UP:        // +Z 方向伸出
+        mins = worldPos + Vec3(0.f, 0.f, 0.f);
+        maxs = worldPos + Vec3(1.f, 1.f, height);
+        frontFace = FACE_ZMAX;
+        backFace  = FACE_ZMIN;
+        break;
+    case DIRECTION_DOWN:      // -Z 方向伸出
+        mins = worldPos + Vec3(0.f, 0.f, 1.f - height);
+        maxs = worldPos + Vec3(1.f, 1.f, 1.f);
+        frontFace = FACE_ZMIN;
+        backFace  = FACE_ZMAX;
+        break;
+    case DIRECTION_NORTH:     // +Y 方向伸出
+        mins = worldPos + Vec3(0.f, 0.f, 0.f);
+        maxs = worldPos + Vec3(1.f, height, 1.f);
+        frontFace = FACE_YMAX;
+        backFace  = FACE_YMIN;
+        break;
+    case DIRECTION_SOUTH:     // -Y 方向伸出
+        mins = worldPos + Vec3(0.f, 1.f - height, 0.f);
+        maxs = worldPos + Vec3(1.f, 1.f, 1.f);
+        frontFace = FACE_YMIN;
+        backFace  = FACE_YMAX;
+        break;
+    case DIRECTION_EAST:      // +X 方向伸出
+        mins = worldPos + Vec3(0.f, 0.f, 0.f);
+        maxs = worldPos + Vec3(height, 1.f, 1.f);
+        frontFace = FACE_XMAX;
+        backFace  = FACE_XMIN;
+        break;
+    case DIRECTION_WEST:      // -X 方向伸出
+        mins = worldPos + Vec3(1.f - height, 0.f, 0.f);
+        maxs = worldPos + Vec3(1.f, 1.f, 1.f);
+        frontFace = FACE_XMIN;
+        backFace  = FACE_XMAX;
+        break;
+    default:
+        mins = worldPos;
+        maxs = worldPos + Vec3(1.f, 1.f, height);
+        frontFace = FACE_ZMAX;
+        backFace  = FACE_ZMIN;
+        break;
+    }
+
+    // 8 个角点（任意 AABB 都可以这样写）
+    Vec3 p000(mins.x, mins.y, mins.z);
+    Vec3 p100(maxs.x, mins.y, mins.z);
+    Vec3 p010(mins.x, maxs.y, mins.z);
+    Vec3 p110(maxs.x, maxs.y, mins.z);
+    Vec3 p001(mins.x, mins.y, maxs.z);
+    Vec3 p101(maxs.x, mins.y, maxs.z);
+    Vec3 p011(mins.x, maxs.y, maxs.z);
+    Vec3 p111(maxs.x, maxs.y, maxs.z);
+
+    auto GetFaceUV = [&](Face f) -> AABB2 const&
+    {
+        if (f == frontFace) return actualTopUVs; // 活塞前面
+        if (f == backFace)  return bottomUVs;    // 活塞屁股
+        return sideUVs;                          // 其余是侧面
+    };
+
+    // 注意这里面的顶点顺序是照你原来向上的版本抄的，只是换成了 p*** 写法
+    // z = mins.z 面
+    AddVertsForIndexQuad3D(
+        m_vertices, m_indices,
+        p010, p110, p100, p000,
+        color, GetFaceUV(FACE_ZMIN));
+
+    // z = maxs.z 面
+    AddVertsForIndexQuad3D(
+        m_vertices, m_indices,
+        p001, p101, p111, p011,
+        color, GetFaceUV(FACE_ZMAX));
+
+    // x = maxs.x 面
+    AddVertsForIndexQuad3D(
+        m_vertices, m_indices,
+        p100, p110, p111, p101,
+        color, GetFaceUV(FACE_XMAX));
+
+    // x = mins.x 面
+    AddVertsForIndexQuad3D(
+        m_vertices, m_indices,
+        p010, p000, p001, p011,
+        color, GetFaceUV(FACE_XMIN));
+
+    // y = maxs.y 面
+    AddVertsForIndexQuad3D(
+        m_vertices, m_indices,
+        p110, p010, p011, p111,
+        color, GetFaceUV(FACE_YMAX));
+
+    // y = mins.y 面
+    AddVertsForIndexQuad3D(
+        m_vertices, m_indices,
+        p000, p100, p101, p001,
+        color, GetFaceUV(FACE_YMIN));
 }
 
 void Chunk::AddPistonHeadToMesh(const BlockIterator& iter)
 {
     Block* head = iter.GetBlock();
     if (!head) return;
-    
+
     IntVec3 globalCoords = iter.GetGlobalCoords();
     Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
-    
-    const BlockDefinition& def = BlockDefinition::GetBlockDef(head->m_typeIndex);
-    AABB2 topUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
-    AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
-    
-    Rgba8 color = Rgba8::WHITE;
-    
-    float headThick = 4.0f / 16.0f;
-    float armW = 4.0f / 16.0f;
-    float armOff = (1.0f - armW) / 2.0f;
-    
-    // 头部
-    AABB3 headBox(worldPos + Vec3(0, 0, 1 - headThick), worldPos + Vec3(1, 1, 1));
-    AddVertsForIndexAABB3D(m_vertices, m_indices, headBox, color, topUVs);
-    
-    // 连接杆
-    AABB3 armBox(worldPos + Vec3(armOff, armOff, 0), worldPos + Vec3(armOff + armW, armOff + armW, 1 - headThick));
-    AddVertsForIndexAABB3D(m_vertices, m_indices, armBox, color, sideUVs);
 
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(head->m_typeIndex);
+    AABB2 topUVs  = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
+
+    Rgba8 color = Rgba8::WHITE;
+
+    float headThick = 4.0f / 16.0f;   // 活塞头厚度
+    float armW      = 4.0f / 16.0f;   // 中间那根小方柱的宽度
+    float armOff    = (1.0f - armW) * 0.5f;
+
+    Direction facing = (Direction)head->GetBlockFacing();
+
+    AABB3 headBox;
+    AABB3 armBox;
+
+    switch (facing)
+    {
+    case DIRECTION_UP: // 头在方块上面，+Z
+        headBox = AABB3(
+            worldPos + Vec3(0.f, 0.f, 1.f - headThick),
+            worldPos + Vec3(1.f, 1.f, 1.f));
+        armBox = AABB3(
+            worldPos + Vec3(armOff, armOff, 0.f),
+            worldPos + Vec3(armOff + armW, armOff + armW, 1.f - headThick));
+        break;
+
+    case DIRECTION_DOWN: // 头在下面，-Z
+        headBox = AABB3(
+            worldPos + Vec3(0.f, 0.f, 0.f),
+            worldPos + Vec3(1.f, 1.f, headThick));
+        armBox = AABB3(
+            worldPos + Vec3(armOff, armOff, headThick),
+            worldPos + Vec3(armOff + armW, armOff + armW, 1.f));
+        break;
+
+    case DIRECTION_NORTH: // +Y
+        headBox = AABB3(
+            worldPos + Vec3(0.f, 1.f - headThick, 0.f),
+            worldPos + Vec3(1.f, 1.f, 1.f));
+        armBox = AABB3(
+            worldPos + Vec3(armOff, 0.f, armOff),
+            worldPos + Vec3(armOff + armW, 1.f - headThick, armOff + armW));
+        break;
+
+    case DIRECTION_SOUTH: // -Y
+        headBox = AABB3(
+            worldPos + Vec3(0.f, 0.f, 0.f),
+            worldPos + Vec3(1.f, headThick, 1.f));
+        armBox = AABB3(
+            worldPos + Vec3(armOff, headThick, armOff),
+            worldPos + Vec3(armOff + armW, 1.f, armOff + armW));
+        break;
+
+    case DIRECTION_EAST: // +X
+        headBox = AABB3(
+            worldPos + Vec3(1.f - headThick, 0.f, 0.f),
+            worldPos + Vec3(1.f, 1.f, 1.f));
+        armBox = AABB3(
+            worldPos + Vec3(0.f, armOff, armOff),
+            worldPos + Vec3(1.f - headThick, armOff + armW, armOff + armW));
+        break;
+
+    case DIRECTION_WEST: // -X
+        headBox = AABB3(
+            worldPos + Vec3(0.f, 0.f, 0.f),
+            worldPos + Vec3(headThick, 1.f, 1.f));
+        armBox = AABB3(
+            worldPos + Vec3(headThick, armOff, armOff),
+            worldPos + Vec3(1.f, armOff + armW, armOff + armW));
+        break;
+
+    default:
+        // 默认按向上处理，避免奇怪情况
+        headBox = AABB3(
+            worldPos + Vec3(0.f, 0.f, 1.f - headThick),
+            worldPos + Vec3(1.f, 1.f, 1.f));
+        armBox = AABB3(
+            worldPos + Vec3(armOff, armOff, 0.f),
+            worldPos + Vec3(armOff + armW, armOff + armW, 1.f - headThick));
+        break;
+    }
+
+    // 头板：用 topUVs（正面那块带十字的木板）
+    AddVertsForIndexAABB3D(m_vertices, m_indices, headBox, color, topUVs);
+
+    // 中间那根小柱：用 sideUVs
+    AddVertsForIndexAABB3D(m_vertices, m_indices, armBox, color, sideUVs);
 }
 
 void Chunk::AddObserverToMesh(const BlockIterator& iter)
@@ -1389,7 +1588,13 @@ void Chunk::AddObserverToMesh(const BlockIterator& iter)
     
     // top = 检测面, bottom = 输出面, side = 侧面
     AABB2 frontUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
-    AABB2 backUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_bottomSpriteCoords);
+    
+    AABB2 backOffUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_bottomSpriteCoords);
+    IntVec2 backOnCoords = def.m_bottomSpriteCoords + IntVec2(1, 0);   
+    AABB2 backOnUVs = g_theGame->m_spriteSheet->GetSpriteUVs(backOnCoords);
+    bool isOn = observer->GetSpecialState();
+    AABB2 backUVs = isOn ? backOnUVs : backOffUVs;
+    
     AABB2 sideUVs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_sideSpriteCoords);
     
     Rgba8 color = Rgba8::WHITE;
@@ -1532,7 +1737,7 @@ void Chunk::AddObserverToMesh(const BlockIterator& iter)
 //     );
 // }
 
-bool Chunk::NeedsSpecialRendering(uint8_t blockType)
+bool Chunk::NeedsSpecialRenderingAsRedstoneComp(uint8_t blockType)
 {
     if (IsRedstoneWire(blockType))
         return true;
@@ -1544,7 +1749,6 @@ bool Chunk::NeedsSpecialRendering(uint8_t blockType)
     case BLOCK_TYPE_REPEATER_ON:
     case BLOCK_TYPE_LEVER:
     case BLOCK_TYPE_BUTTON_STONE:
-    case BLOCK_TYPE_BUTTON_WOOD:
     case BLOCK_TYPE_PISTON:
     case BLOCK_TYPE_PISTON_HEAD:
     case BLOCK_TYPE_OBSERVER:
@@ -1554,7 +1758,39 @@ bool Chunk::NeedsSpecialRendering(uint8_t blockType)
     }
 }
 
-void Chunk::AddRedstoneComponentToMesh(const BlockIterator& iter)
+void Chunk::AddCropToMesh(const BlockIterator& iter, std::vector<Vertex_PCUTBN>& targetVerts, std::vector<unsigned int>& targetIndices)
+{
+    Block* crop = iter.GetBlock();
+    if (!crop) return;
+    
+    IntVec3 globalCoords = iter.GetGlobalCoords();
+    Vec3 worldPos((float)globalCoords.x, (float)globalCoords.y, (float)globalCoords.z);
+    
+    const BlockDefinition& def = BlockDefinition::GetBlockDef(crop->m_typeIndex);
+    AABB2 uvs = g_theGame->m_spriteSheet->GetSpriteUVs(def.m_topSpriteCoords);
+    Rgba8 color = GetCropGrowthColor(crop->m_typeIndex);
+    float height = 1.0f;
+    // 十字模型：X方向面
+    AddVertsForIndexQuad3D(targetVerts, targetIndices,
+        worldPos + Vec3(0, 0.2f, 0), worldPos + Vec3(1, 0.8f, 0),
+        worldPos + Vec3(1, 0.8f, height), worldPos + Vec3(0, 0.2f, height),
+        color, uvs);
+    AddVertsForIndexQuad3D(targetVerts, targetIndices,
+        worldPos + Vec3(1, 0.8f, 0), worldPos + Vec3(0, 0.2f, 0),
+        worldPos + Vec3(0, 0.2f, height), worldPos + Vec3(1, 0.8f, height),
+        color, uvs);
+    // 十字模型：Y方向面
+    AddVertsForIndexQuad3D(targetVerts, targetIndices,
+        worldPos + Vec3(0.2f, 0, 0), worldPos + Vec3(0.8f, 1, 0),
+        worldPos + Vec3(0.8f, 1, height), worldPos + Vec3(0.2f, 0, height),
+        color, uvs);
+    AddVertsForIndexQuad3D(targetVerts, targetIndices,
+        worldPos + Vec3(0.8f, 1, 0), worldPos + Vec3(0.2f, 0, 0),
+        worldPos + Vec3(0.2f, 0, height), worldPos + Vec3(0.8f, 1, height),
+        color, uvs);
+}
+
+void Chunk::AddRedstoneComponentToMesh(const BlockIterator& iter, std::vector<Vertex_PCUTBN>& targetVerts, std::vector<unsigned int>& targetIndices)
 {
     Block* block = iter.GetBlock();
     if (!block) return;
@@ -1579,7 +1815,7 @@ void Chunk::AddRedstoneComponentToMesh(const BlockIterator& iter)
         AddLeverToMesh(iter);
         break;
     case BLOCK_TYPE_BUTTON_STONE:
-    case BLOCK_TYPE_BUTTON_WOOD:
+    //case BLOCK_TYPE_BUTTON_WOOD:
         AddButtonToMesh(iter);
         break;
     case BLOCK_TYPE_PISTON:
@@ -1598,7 +1834,6 @@ bool Chunk::HandleBlockInteraction(const BlockIterator& block)
 {
     if (!block.IsValid())
         return false;
-    
     Block* b = block.GetBlock();
     if (!b)
         return false;
@@ -1610,7 +1845,6 @@ bool Chunk::HandleBlockInteraction(const BlockIterator& block)
         return true;
         
     case BLOCK_TYPE_BUTTON_STONE:
-    case BLOCK_TYPE_BUTTON_WOOD:
         m_world->m_redstoneSimulator->PressButton(block);
         return true;
         
@@ -1621,7 +1855,6 @@ bool Chunk::HandleBlockInteraction(const BlockIterator& block)
         
         // 活塞不需要右键交互
         // 红石块不需要交互
-        
     default:
         break;
     }
@@ -1653,32 +1886,52 @@ const int* Chunk::GetFaceIndices(Direction direction)
 
 void Chunk::UpdateVBOIBO()
 {
-    if (m_vertices.empty())
+    // 处理不透明缓冲
+    if (!m_vertices.empty())
     {
-        DebuggerPrintf("Has no vertices!\n");
-        return;
-    }
-       
-    if (m_vertexBuffer)
-    {
-        delete m_vertexBuffer;
-        m_vertexBuffer = nullptr;
-    }
-    if (m_indexBuffer)
-    {
-        delete m_indexBuffer;
-        m_indexBuffer = nullptr;
-    }
+        if (m_vertexBuffer)
+        {
+            delete m_vertexBuffer;
+            m_vertexBuffer = nullptr;
+        }
+        if (m_indexBuffer)
+        {
+            delete m_indexBuffer;
+            m_indexBuffer = nullptr;
+        }
 
-    m_vertexBuffer = g_theRenderer->CreateVertexBuffer((unsigned int)(m_vertices.size() * sizeof(Vertex_PCUTBN)),
-                                                       sizeof(Vertex_PCUTBN));
-    m_indexBuffer = g_theRenderer->CreateIndexBuffer((unsigned int)(m_indices.size() * sizeof(unsigned int)),
-                                                     sizeof(unsigned int));
+        m_vertexBuffer = g_theRenderer->CreateVertexBuffer((unsigned int)(m_vertices.size() * sizeof(Vertex_PCUTBN)),
+                                                           sizeof(Vertex_PCUTBN));
+        m_indexBuffer = g_theRenderer->CreateIndexBuffer((unsigned int)(m_indices.size() * sizeof(unsigned int)),
+                                                         sizeof(unsigned int));
+        
+        g_theRenderer->CopyCPUToGPU(m_vertices.data(),(unsigned int)(m_vertices.size() * sizeof(Vertex_PCUTBN)),m_vertexBuffer);
+        g_theRenderer->CopyCPUToGPU(m_indices.data(), (unsigned int)(m_indices.size() * sizeof(unsigned int)),m_indexBuffer);
+    }
     
-    g_theRenderer->CopyCPUToGPU(m_vertices.data(),(unsigned int)(m_vertices.size() * sizeof(Vertex_PCUTBN)),m_vertexBuffer);
-    g_theRenderer->CopyCPUToGPU(m_indices.data(), (unsigned int)(m_indices.size() * sizeof(unsigned int)),m_indexBuffer);
-}
+    // 处理透明缓冲
+    if (!m_transparentVertices.empty())
+    {
+        if (m_transparentVertexBuffer)
+        {
+            delete m_transparentVertexBuffer;
+            m_transparentVertexBuffer = nullptr;
+        }
+        if (m_transparentIndexBuffer)
+        {
+            delete m_transparentIndexBuffer;
+            m_transparentIndexBuffer = nullptr;
+        }
 
+        m_transparentVertexBuffer = g_theRenderer->CreateVertexBuffer((unsigned int)(m_transparentVertices.size() * sizeof(Vertex_PCUTBN)),
+                                                                      sizeof(Vertex_PCUTBN));
+        m_transparentIndexBuffer = g_theRenderer->CreateIndexBuffer((unsigned int)(m_transparentIndices.size() * sizeof(unsigned int)),
+                                                                    sizeof(unsigned int));
+        
+        g_theRenderer->CopyCPUToGPU(m_transparentVertices.data(),(unsigned int)(m_transparentVertices.size() * sizeof(Vertex_PCUTBN)),m_transparentVertexBuffer);
+        g_theRenderer->CopyCPUToGPU(m_transparentIndices.data(), (unsigned int)(m_transparentIndices.size() * sizeof(unsigned int)),m_transparentIndexBuffer);
+    }
+}
 bool Chunk::AreAllNeighborsActive() const
 {
     return (m_eastNeighbor && m_eastNeighbor->GetState() == ChunkState::ACTIVE) &&

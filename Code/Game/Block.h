@@ -25,7 +25,6 @@ public:
         
         m_flags &= (BLOCK_BIT_IS_SKY | BLOCK_BIT_IS_LIGHT_DIRTY);
         
-        // 设置新的flags
         if (def.m_isOpaque)
             m_flags |= BLOCK_BIT_IS_OPAQUE;
         if (def.m_isSolid)
@@ -112,6 +111,9 @@ public:
 
     void SetButtonPressed(bool pressed);
     bool GetButtonPressed() const;
+
+    inline bool IsObserverTriggered() const { return GetSpecialState(); }
+    inline void SetObserverTriggered(bool triggered) { SetSpecialState(triggered); }
 };
 
 static_assert(sizeof(Block) == 4, "Block should be exactly 4 bytes!");

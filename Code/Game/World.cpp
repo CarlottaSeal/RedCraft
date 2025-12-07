@@ -12,6 +12,7 @@
 #include "Engine/Core/VertexUtils.hpp"
 #include "Engine/Math/IntVec2.hpp"
 #include "Engine/Renderer/ConstantBuffer.hpp"
+#include "Gameplay/CropSystem.h"
 #include "Gameplay/RedstoneSimulator.h"
 #include "ThirdParty/Noise/SmoothNoise.hpp"
 
@@ -24,6 +25,7 @@ World::World(Game* owner)
     m_worldShader = g_theRenderer->CreateOrGetShader("Data/Shaders/WorldShader", VertexType::VERTEX_PCUTBN);
 
     m_redstoneSimulator = new RedstoneSimulator(this);
+    m_cropSystem = new CropSystem(this);
 }
 
 World::~World()
@@ -44,12 +46,19 @@ World::~World()
         delete m_redstoneSimulator;
         m_redstoneSimulator = nullptr;
     }
+    if (m_cropSystem)
+    {
+        delete m_cropSystem;
+        m_cropSystem = nullptr;
+    }
 }
 
 void World::Update(float deltaSeconds)
 {
-    //UpdateVisibleChunks();
+    // if (g_theInput->ShouldIgnoreMouseInput())
+    //     return;
     
+    //UpdateVisibleChunks();
     UpdateAccelerateTime();
     UpdateTypeToPlace();
     UpdateDiggingAndPlacing(deltaSeconds);
@@ -92,29 +101,44 @@ void World::Update(float deltaSeconds)
     ProcessDirtyLighting();
 
     if (m_redstoneSimulator)
-    {
         m_redstoneSimulator->Update(deltaSeconds);
-    }
-    
+    if (m_cropSystem)
+        m_cropSystem->Update(deltaSeconds);
     RebuildDirtyMeshes(2);
 }
 
 void World::Render() const
 {
     BindWorldConstansBuffer();
+    g_theRenderer->BindShader(m_worldShader);
+    g_theRenderer->SetModelConstants();
+    g_theRenderer->BindTexture(&m_owner->m_spriteSheet->GetTexture());
+    // 阶段 1: 渲染所有不透明方块 (建立深度缓冲)
+    g_theRenderer->SetDepthMode(DepthMode::READ_WRITE_LESS_EQUAL);  
+    g_theRenderer->SetBlendMode(BlendMode::OPAQUE);     
     for (auto& chunkPair : m_activeChunks)
     {
-        chunkPair.second->Render();
+        chunkPair.second->RenderOpaque();  
     }
+    // 阶段 2: 渲染所有透明方块 (只读深度，混合颜色)
+    g_theRenderer->SetDepthMode(DepthMode::READ_ONLY_LESS_EQUAL); 
+    g_theRenderer->SetBlendMode(BlendMode::ALPHA);             
+    
+    for (auto& chunkPair : m_activeChunks)
+    {
+        chunkPair.second->RenderTransparent();  // 渲染透明几何体
+    }
+    
     if (m_highlightedBlock.m_isValid)
     {
+        g_theRenderer->SetDepthMode(DepthMode::READ_WRITE_LESS_EQUAL); 
         RenderBlockHighlight();
     }
-	// for (Chunk* chunk : m_visibleChunks)
-	// {
-	// 	chunk->Render();
-	//     DebuggerPrintf("Visible Chunks: %d\n", (int)m_visibleChunks.size());
-	// }
+    // for (Chunk* chunk : m_visibleChunks)
+    // {
+    // 	chunk->Render();
+    //     DebuggerPrintf("Visible Chunks: %d\n", (int)m_visibleChunks.size());
+    // }
 }
 
 void World::RenderBlockHighlight() const
@@ -978,6 +1002,11 @@ void World::OnBlockPlaced(const BlockIterator& block)
         if (m_redstoneSimulator)
             m_redstoneSimulator->OnBlockPlaced(block);
     }
+    if (IsCrop(b->m_typeIndex))
+    {
+        if (m_cropSystem)
+            m_cropSystem->RegisterCrop(block.GetGlobalCoords(), b->m_typeIndex);
+    }
 }
 
 void World::OnBlockRemoved(const BlockIterator& block, uint8_t oldType)
@@ -988,6 +1017,11 @@ void World::OnBlockRemoved(const BlockIterator& block, uint8_t oldType)
     {
         if (m_redstoneSimulator)
             m_redstoneSimulator->OnBlockRemoved(block, oldType);
+    }
+    if (IsCrop(oldType))
+    {
+        if (m_cropSystem)
+            m_cropSystem->UnregisterCrop(block.GetGlobalCoords());
     }
 }
 
@@ -1000,6 +1034,11 @@ void World::OnBlockStateChanged(const BlockIterator& block, uint8_t oldType, uin
     {
         m_redstoneSimulator->OnBlockStateChanged(block, oldType, newType);
     }
+}
+
+const std::map<IntVec2, Chunk*>& World::GetActiveChunks()
+{
+    return m_activeChunks;
 }
 
 bool World::RegenerateSingleNearestDirtyChunk()
@@ -1103,7 +1142,7 @@ void World::DeactivateSingleFarthestOutsideRangeIfAny()
     }
 }
 
-void World::ActivateChunk(IntVec2 chunkCoords)
+void World::ActivateChunk(IntVec2 chunkCoords) //现在async了，已经用不到了
 {
     Chunk* newChunk = new Chunk(this, chunkCoords);
     
@@ -1127,6 +1166,7 @@ void World::ActivateChunk(IntVec2 chunkCoords)
     m_activeChunks[chunkCoords] = newChunk;
 
     ConnectChunkNeighbors(newChunk);
+    ScanAndRegisterCropsInChunk(newChunk);
 }
 
 void World::DeactivateChunk(IntVec2 chunkCoords)
@@ -1136,6 +1176,7 @@ void World::DeactivateChunk(IntVec2 chunkCoords)
         return;
         
     Chunk* chunk = it->second;
+    UnregisterCropsInChunk(chunkCoords);  
     UndirtyAllBlocksInChunk(chunk);
     DisconnectChunkNeighbors(chunk);
     m_activeChunks.erase(it);
@@ -1303,7 +1344,6 @@ void World::ActivateProcessedChunk(Chunk* chunk)
 void World::ProcessCompletedJobs()
 {
     std::vector<Job*> completedJobs = g_theJobSystem->RetrieveCompletedJobs();
-    
     // 第一步：批量激活所有chunk，但先不连接邻居
     std::vector<Chunk*> newlyActivatedChunks;
     m_generatingChunksCount = 0;
@@ -1327,7 +1367,6 @@ void World::ProcessCompletedJobs()
         
         delete job;
     }
-    
     // 第二步：现在所有新chunk都在activeChunks中了，批量连接邻居
     m_generatingChunksCount = (int)newlyActivatedChunks.size();
     for (Chunk* chunk : newlyActivatedChunks)
@@ -1339,6 +1378,10 @@ void World::ProcessCompletedJobs()
     for (Chunk* chunk : newlyActivatedChunks)
     {
         chunk->InitializeLighting();
+    }
+    for (Chunk* chunk : newlyActivatedChunks)
+    {
+        ScanAndRegisterCropsInChunk(chunk);
     }
 }
 
@@ -1538,6 +1581,55 @@ void World::ComputeCorrectLightInfluence(const BlockIterator& iter, uint8_t& out
     }
 }
 
+void World::ScanAndRegisterCropsInChunk(Chunk* chunk)
+{
+    if (!chunk || !m_cropSystem)
+        return;
+    
+    for (int x = 0; x < CHUNK_SIZE_X; x++)
+    {
+        for (int y = 0; y < CHUNK_SIZE_Y; y++)
+        {
+            for (int z = 0; z < CHUNK_SIZE_Z; z++)
+            {
+                BlockIterator iter(chunk, IntVec3(x, y, z));
+                Block* block = iter.GetBlock();
+                
+                if (block && IsCrop(block->m_typeIndex))
+                {
+                    IntVec3 globalPos = iter.GetGlobalCoords();
+                    m_cropSystem->RegisterCrop(globalPos, block->m_typeIndex);
+                }
+            }
+        }
+    }
+}
+
+void World::UnregisterCropsInChunk(const IntVec2& chunkCoords)
+{
+    if (!m_cropSystem)
+        return;
+    
+    IntVec3 chunkMin(chunkCoords.x * CHUNK_SIZE_X, 
+                     chunkCoords.y * CHUNK_SIZE_Y, 
+                     0);
+    IntVec3 chunkMax(chunkMin.x + CHUNK_SIZE_X - 1,
+                     chunkMin.y + CHUNK_SIZE_Y - 1,
+                     CHUNK_SIZE_Z - 1);
+    
+    for (int x = chunkMin.x; x <= chunkMax.x; x++)
+    {
+        for (int y = chunkMin.y; y <= chunkMax.y; y++)
+        {
+            for (int z = chunkMin.z; z <= chunkMax.z; z++)
+            {
+                IntVec3 pos(x, y, z);
+                m_cropSystem->UnregisterCrop(pos);
+            }
+        }
+    }
+}
+
 void World::BindWorldConstansBuffer() const
 {
     WorldConstants constants;
@@ -1671,8 +1763,7 @@ void World::UpdateDiggingAndPlacing(float deltaSeconds)
                     m_redstoneSimulator->ToggleLever(m_currentRaycast.m_hitBlock);
                     return;  // 不放置方块
                 }
-                else if (blockType == BLOCK_TYPE_BUTTON_STONE || 
-                         blockType == BLOCK_TYPE_BUTTON_WOOD)
+                else if (blockType == BLOCK_TYPE_BUTTON_STONE)
                 {
                     m_redstoneSimulator->PressButton(m_currentRaycast.m_hitBlock);
                     return;

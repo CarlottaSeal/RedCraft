@@ -336,7 +336,6 @@ void CaveGenerator::PostProcessLiquids(Block* blocks, const IntVec2& chunkCoords
                     blocks[idx].SetType(BLOCK_TYPE_AIR);
                 }
 
-                // ====== 保持你原来的岩浆/水 -> 黑曜石逻辑 ======
                 if (blocks[idx].m_typeIndex == BLOCK_TYPE_LAVA)
                 {
                     bool touchesWater = false;

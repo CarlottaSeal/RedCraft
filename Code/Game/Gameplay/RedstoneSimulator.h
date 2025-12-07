@@ -28,6 +28,9 @@ public:
     bool IsStronglyPowered(const BlockIterator& block) const;
     bool IsPistonPowered(const BlockIterator& block) const;
     
+    void ExtendPiston(const BlockIterator& piston);
+    void RetractPiston(const BlockIterator& piston);
+    
     // 事件回调（World调用）
     void OnBlockPlaced(const BlockIterator& block);
     void OnBlockRemoved(const BlockIterator& block, uint8_t oldType);
@@ -64,12 +67,13 @@ private:
     void UpdateWireConnections(const BlockIterator& block);
     void ScheduleClimbingWireUpdates(const BlockIterator& block);
     WireConnection GetWireConnectionInDirection(const BlockIterator& block, Direction dir) const;
-    bool CanConnectToRedstone(uint8_t blockType, Direction fromDir) const;
+    bool CanConnectToRedstone(const BlockIterator& block, Direction fromDir) const;
     //void UpdateWireAppearance(const IntVec3& pos);
+    void GetPerpendicularDirectionsForLeftAndRight(Direction facing, Direction& leftDir, Direction& rightDir) const;
     
     void UpdateLampLighting(const BlockIterator& block, bool turnOn);
+    void CleanupBurnoutTracker();
     
-    // 活塞
     void TryExtendPiston(const BlockIterator& block);
     void TryRetractPiston(const BlockIterator& block);
     bool CanPushBlockChain(const BlockIterator& start, Direction pushDir, int& chainLength) const;
@@ -125,6 +129,7 @@ private:
     std::deque<RedstoneUpdate> m_updateQueue;
     std::unordered_set<int64_t> m_queuedPositions;  // 避免重复
 
+    float m_lastBurnoutCleanup = 0.0f;
     std::deque<RedstoneUpdate> m_observerQueue;
     std::unordered_set<int64_t> m_queuedObservers;
     

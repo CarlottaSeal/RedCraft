@@ -4,10 +4,12 @@
 #include <string>
 #include <vector>
 
+#include "Engine/Math/IntVec3.h"
+
+class CropDefinition;
 class World;
 class BlockIterator;
 
-// 生长条件类型
 enum class GrowthCondition : uint8_t
 {
     NONE,                    // 无条件
@@ -48,39 +50,96 @@ struct GrowthStage
     // std::vector<ItemDrop> m_drops;
 };
 
-// 可生长实体定义
-struct GrowableDefinition
+// 掉落物定义
+struct CropDrop
 {
-    std::string m_name;                    // 名称 (如 "wheat", "fish", "bee")
+    uint8_t m_itemType = 0;
+    int m_minCount = 1;
+    int m_maxCount = 1;
+    float m_chance = 1.0f;
+    bool m_onlyWhenMature = true;
+
+    CropDrop() = default;
+    CropDrop(uint8_t type, int minC, int maxC, float chance = 1.0f, bool matureOnly = true)
+        : m_itemType(type), m_minCount(minC), m_maxCount(maxC)
+        , m_chance(chance), m_onlyWhenMature(matureOnly) {}
+
+    int RollCount() const;
+};
+
+// 生长阶段定义
+struct CropStage
+{
+    uint8_t m_blockType = 0;
+    bool m_isMature = false;
+    bool m_isHarvestable = false;
+    float m_visualHeight = 1.0f;
+    std::vector<CropDrop> m_drops;
+
+    CropStage() = default;
+    CropStage(uint8_t type, bool mature = false, bool harvestable = false, float height = 1.0f)
+        : m_blockType(type), m_isMature(mature), m_isHarvestable(harvestable), m_visualHeight(height) {}
+
+    CropStage& AddDrop(uint8_t type, int minC, int maxC, float chance = 1.0f);
+};
+
+// 生长模式
+enum class GrowthPattern : uint8_t
+{
+    STAGE_CHANGE,   // 改变自身方块类型（小麦、胡萝卜）
+    GROW_UP,        // 向上生长（甘蔗、竹子、海带）
+    SPREAD,         // 蔓延生长（草方块、蘑菇）
+    MULTI_BLOCK,    // 多方块结构（向日葵、高草）
+    HATCH,          // 孵化后消失（海龟蛋、蛙卵）
+    TREE            // 树木生长（树苗 → 树）
+};
+
+// 作物分类
+enum class CropCategory : uint8_t
+{
+    CROP,           // 农作物
+    PLANT,          // 植物
+    AQUATIC,        // 水生
+    FUNGUS,         // 真菌
+    GRASS,          // 草类
+    FLOWER,         // 花卉
+    EGG,            // 卵类
+    TREE_SAPLING,   // 树苗
+    OTHER
+};
+
+struct FarmArea
+{
+    IntVec3 m_minCorner;
+    IntVec3 m_maxCorner;
+    std::string m_name;
     
-    // 生长阶段 (按顺序)
-    std::vector<GrowthStage> m_stages;
+    FarmArea() = default;
+    FarmArea(const IntVec3& minC, const IntVec3& maxC, const std::string& name = "")
+        : m_minCorner(minC), m_maxCorner(maxC), m_name(name) {}
+};
+
+// 作物统计
+struct CropStats
+{
+    int m_totalCrops = 0;
+    int m_matureCrops = 0;
+    int m_growingCrops = 0;
+    std::unordered_map<std::string, int> m_countByType;
+};
+
+
+struct TrackedCrop
+{
+    IntVec3 m_position;                  // 作物的世界坐标
+    uint8_t m_blockType;                 // 当前方块类型
+    const CropDefinition* m_definition;  // 缓存的定义指针（避免重复查找）
+    float m_growthTimer;                 // 生长计时器
     
-    // 生长条件
-    std::vector<GrowthRequirement> m_requirements;
-    
-    // 基础生长概率 (每次随机tick的生长几率)
-    float m_baseGrowthChance = 0.15f;
-    
-    // 是否受随机tick影响 (false = 使用固定时间间隔)
-    bool m_usesRandomTick = true;
-    
-    // 固定生长间隔 (仅当 m_usesRandomTick = false)
-    float m_fixedGrowthInterval = 0.0f;
-    
-    // 分类标签 (用于过滤和查询)
-    enum class Category : uint8_t
-    {
-        PLANT,           // 植物 (小麦、胡萝卜)
-        AQUATIC,         // 水生 (海带、鱼卵)
-        ANIMAL,          // 动物相关 (蜜蜂巢)
-        FUNGUS,          // 真菌 (蘑菇、地狱疣)
-        OTHER
-    } m_category = Category::PLANT;
-    
-    // 自定义生长条件检查 (可选)
-    std::function<bool(const BlockIterator&, World*)> m_customConditionCheck;
-    
-    // 自定义生长行为 (可选，用于特殊生长如树木)
-    std::function<void(const BlockIterator&, World*)> m_customGrowthBehavior;
+    TrackedCrop(const IntVec3& pos, uint8_t type, const CropDefinition* def)
+        : m_position(pos)
+        , m_blockType(type)
+        , m_definition(def)
+        , m_growthTimer(0.0f)
+    {}
 };

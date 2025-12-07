@@ -24,6 +24,7 @@ IntVec3 GetGlobalCoords(const IntVec2& chunkCoords, const IntVec3& localCoords);
 IntVec3 GetGlobalCoords(const Vec3& position);
 uint8_t GetAttachmentFacingValue(Direction attachDir);
 Rgba8 GetRedstoneWireColor(uint8_t power);
+Rgba8 GetCropGrowthColor(uint8_t type);
 
 // block
 bool IsSolid(uint8_t type);
@@ -40,8 +41,9 @@ bool IsRedstoneWire(uint8_t blockType);
 bool IsRedstonePowerable(uint8_t blockType);
 bool IsPowerSource(uint8_t blockType);
 bool IsCrop(uint8_t blockType);
+bool IsPlantBillboard(uint8_t blockType);
 bool IsMatureCrop(uint8_t blockType);
-
+bool IsBlockTransparent(uint8_t blockType);
 void GetPerpendicularDirectionsForLeftAndRight(Direction facing, 
     Direction& leftDir, Direction& rightDir);
 
