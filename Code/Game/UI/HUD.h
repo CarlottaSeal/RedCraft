@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "Engine/UI/UIScreen.h"
 
+class Player;
 class Panel;
 class ProgressBar;
 class Sprite;
@@ -14,15 +15,17 @@ public:
     
     virtual void Build() override;
     virtual void Update(float deltaSeconds) override;
-    void HandleHotbarInput();
-
+    virtual void Render() const override;
+    
     // void UpdateHealth(float healthPercent);
     // void UpdateHunger(float hungerPercent);
     // void UpdateArmor(float armorPercent);
     // void UpdateExperience(float expPercent);
     void SetHotbarSlot(int slotIndex, Texture* itemTexture = nullptr);
-    void SelectHotbarSlot(int slotIndex);
     void ShowActionMessage(std::string const& message, float duration = 2.0f);
+
+    void RefreshHotbarDisplay();
+    void UpdateSelectionFrame();
 
 private:    
     void BuildCrosshair();
@@ -32,6 +35,7 @@ private:
     // void BuildExperienceBar();
     void BuildHotbar();
     void BuildActionText();
+    void BuildItemTooltip();
     
 private:
     Sprite* m_crosshair = nullptr;
@@ -43,12 +47,13 @@ private:
     Panel* m_hotbarPanel = nullptr;
     std::vector<Panel*> m_hotbarSlots;
     std::vector<Sprite*> m_hotbarIcons;
+    std::vector<Text*> m_hotbarCounts;
     Panel* m_hotbarSelectionFrame = nullptr;
     
     Text* m_actionText = nullptr;
     float m_actionTextTimer = 0.0f;
     float m_actionTextDuration = 0.0f;
-    
-    int m_selectedHotbarSlot = 0;
-    static const int HOTBAR_SLOT_COUNT = 9;
+
+    Text* m_itemTooltip = nullptr;
+    float m_tooltipTimer = 0.0f;
 };

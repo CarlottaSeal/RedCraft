@@ -3,9 +3,15 @@
 #include "Game/Chunk.h"
 #include "Game/Block.h"
 #include "Game/BlockIterator.h"
-#include "Game/BlockDefinition.h"
+#include "Game/Gamecommon.hpp" 
 #include <random>
 #include <algorithm>
+
+#include "Game/Game.hpp"
+#include "Game/Player.hpp"
+#include "Game/UI/GameUIManager.h"
+
+extern Game* g_theGame;
 
 CropSystem::CropSystem(World* world)
     : m_world(world)
@@ -13,10 +19,16 @@ CropSystem::CropSystem(World* world)
     Initialize();
 }
 
+CropSystem::~CropSystem()
+{
+    m_trackedCrops.clear();
+    m_cropIndexByHash.clear();
+}
+
 void CropSystem::Initialize()
 {
     CropDefinition::InitializeAllDefinitions();
-    m_trackedCrops.reserve(1000);  // 预分配空间避免频繁扩容
+    m_trackedCrops.reserve(1000);  
 }
 
 void CropSystem::Update(float deltaSeconds)
@@ -30,58 +42,97 @@ void CropSystem::Update(float deltaSeconds)
     }
     
     ProcessFixedIntervalGrowth(deltaSeconds);
+    
+    m_dropManager.Update(deltaSeconds);
 }
 
-// ============================================================================
-// 🚀 优化后的随机Tick处理
-// ============================================================================
+void CropSystem::Render(Renderer* renderer) const
+{
+    m_dropManager.Render(renderer, *(Camera*)g_theGame->m_player->m_gameCamera, g_theGameUIManager->m_uiAtlas);
+}
+
 void CropSystem::ProcessRandomTicks()
 {
-    static std::mt19937 rng(std::random_device{}());
+    if (m_trackedCrops.empty())
+        return;
     
-    for (const auto& [coords, chunk] : m_world->GetActiveChunks())
+    static std::mt19937 rng(std::random_device{}());
+    int actualNum = MinI(CROPS_PER_TICK, (int)m_trackedCrops.size());
+    
+    for (int i = 0; i < actualNum; i++)
     {
-        if (!chunk) continue;
+        std::uniform_int_distribution<size_t> dist(0, m_trackedCrops.size() - 1);
+        size_t index = dist(rng);
         
-        std::uniform_int_distribution<int> xDist(0, CHUNK_SIZE_X - 1);
-        std::uniform_int_distribution<int> yDist(0, CHUNK_SIZE_Y - 1);
-        std::uniform_int_distribution<int> zDist(0, CHUNK_SIZE_Z - 1);
+        TrackedCrop& crop = m_trackedCrops[index];
+        BlockIterator iter = m_world->GetBlockIterator(crop.m_position);
         
-        for (int i = 0; i < RANDOM_TICKS_PER_CHUNK; i++)
+        if (!iter.IsValid())
         {
-            int lx = xDist(rng);
-            int ly = yDist(rng);
-            int lz = zDist(rng);
-
-            BlockIterator iter = BlockIterator(chunk, IntVec3(lx, ly, lz));
-            if (!iter.IsValid()) continue;
-            
-            Block* block = iter.GetBlock();
-            if (!block) continue;
-            
-            const CropDefinition* def = CropDefinition::GetDefinition(block->m_typeIndex);
-            if (def && def->m_usesRandomTick)
+            UnregisterCropByIndex(index);
+            i--;
+            continue;
+        }
+        
+        Block* block = iter.GetBlock();
+        if (!block || block->m_typeIndex != crop.m_blockType)
+        {
+            const CropDefinition* newDef = CropDefinition::GetDefinition(block ? block->m_typeIndex : 0);
+            if (newDef)
             {
-                TryGrow(iter);
+                crop.m_blockType = block->m_typeIndex;
+                crop.m_definition = newDef;
+            }
+            else
+            {
+                UnregisterCropByIndex(index);
+                i--;
+                continue;
             }
         }
+        
+        if (crop.m_definition && crop.m_definition->m_usesRandomTick)
+        {
+            TryGrow(iter);
+        }
     }
+    // static std::mt19937 rng(std::random_device{}());
+    //
+    // for (const auto& [coords, chunk] : m_world->GetActiveChunks())
+    // {
+    //     if (!chunk) continue;
+    //     
+    //     std::uniform_int_distribution<int> xDist(0, CHUNK_SIZE_X - 1);
+    //     std::uniform_int_distribution<int> yDist(0, CHUNK_SIZE_Y - 1);
+    //     std::uniform_int_distribution<int> zDist(0, CHUNK_SIZE_Z - 1);
+    //     
+    //     for (int i = 0; i < RANDOM_TICKS_PER_CHUNK; i++)
+    //     {
+    //         int lx = xDist(rng);
+    //         int ly = yDist(rng);
+    //         int lz = zDist(rng);
+    //
+    //         BlockIterator iter = BlockIterator(chunk, IntVec3(lx, ly, lz));
+    //         if (!iter.IsValid()) continue;
+    //         
+    //         Block* block = iter.GetBlock();
+    //         if (!block) continue;
+    //         if (!IsCrop(block->m_typeIndex)) continue;
+    //         const CropDefinition* def = CropDefinition::GetDefinition(block->m_typeIndex);
+    //         if (def && def->m_usesRandomTick)
+    //         {
+    //             TryGrow(iter);
+    //         }
+    //     }
+    // }
 }
 
-// ============================================================================
-// 🚀 优化后的固定间隔生长处理 - 核心优化！
-// 原来：遍历所有方块（~3,000,000个/帧）
-// 现在：只遍历已注册的作物（~100-1000个/帧）
-// 性能提升：1000-10000倍
-// ============================================================================
 void CropSystem::ProcessFixedIntervalGrowth(float deltaSeconds)
 {
-    // 遍历追踪的作物（数量级：几百，而不是几百万）
     for (size_t i = 0; i < m_trackedCrops.size(); )
     {
         TrackedCrop& crop = m_trackedCrops[i];
         
-        // 🎯 优化点1：定义已缓存，无需查找
         const CropDefinition* def = crop.m_definition;
         
         // 更新计时器
@@ -137,26 +188,21 @@ void CropSystem::ProcessFixedIntervalGrowth(float deltaSeconds)
 }
 
 
-void CropSystem::RegisterCrop(const IntVec3& position, uint8_t blockType) // 注册作物（在放置方块时调用）
+void CropSystem::RegisterCrop(const IntVec3& position, uint8_t blockType)
 {
     const CropDefinition* def = CropDefinition::GetDefinition(blockType);
     
-    // 只注册固定间隔作物（随机tick作物不需要追踪）
-    if (!def || def->m_usesRandomTick) 
+    if (!def || !def->m_usesRandomTick) 
         return;
-    
     uint64_t hash = HashBlockPos(position);
     
-    // 避免重复注册
     if (m_cropIndexByHash.find(hash) != m_cropIndexByHash.end())
         return;
     
-    // 添加到列表
     m_trackedCrops.emplace_back(position, blockType, def);
     m_cropIndexByHash[hash] = m_trackedCrops.size() - 1;
 }
 
-// 取消注册作物（在破坏方块时调用）
 void CropSystem::UnregisterCrop(const IntVec3& position)
 {
     uint64_t hash = HashBlockPos(position);
@@ -164,7 +210,6 @@ void CropSystem::UnregisterCrop(const IntVec3& position)
     
     if (it == m_cropIndexByHash.end())
         return;
-    
     UnregisterCropByIndex(it->second);
 }
 
@@ -192,7 +237,6 @@ void CropSystem::UnregisterCropByIndex(size_t index)
     m_trackedCrops.pop_back();
 }
 
-// 更新作物类型（生长时调用）
 void CropSystem::UpdateCropType(const IntVec3& position, uint8_t newType)
 {
     uint64_t hash = HashBlockPos(position);
@@ -219,25 +263,19 @@ bool CropSystem::TryGrow(const BlockIterator& block)
     // 已成熟
     if (def->IsMature(b->m_typeIndex)) return false;
     
-    // 条件检查
     if (!CheckGrowthConditions(block, *def)) return false;
     
-    // 概率检查（仅对随机 tick 作物）
     if (def->m_usesRandomTick)
     {
         static std::mt19937 rng(std::random_device{}());
         std::uniform_real_distribution<float> dist(0.0f, 1.0f);
         if (dist(rng) > def->m_baseGrowthChance) return false;
     }
-    
-    // 执行生长
+    DebuggerPrintf("Tried to grow");
     PerformGrowth(block, *def);
     return true;
 }
 
-// ============================================================================
-// 条件检查（保持不变）
-// ============================================================================
 bool CropSystem::CheckGrowthConditions(const BlockIterator& block, const CropDefinition& def)
 {
     // 自定义条件优先
@@ -320,18 +358,16 @@ bool CropSystem::CheckGrowthConditions(const BlockIterator& block, const CropDef
             if (dist(rng) > req.m_chance) return false;
             break;
         }
+        default:
+            break;
         }
     }
     
     return true;
 }
 
-// ============================================================================
-// 执行生长（保持不变）
-// ============================================================================
 void CropSystem::PerformGrowth(const BlockIterator& block, const CropDefinition& def)
 {
-    // 自定义生长行为
     if (def.m_customGrowthBehavior)
     {
         def.m_customGrowthBehavior(block, m_world, def);
@@ -392,7 +428,6 @@ void CropSystem::PerformGrowth(const BlockIterator& block, const CropDefinition&
     m_world->OnBlockStateChanged(block, oldType, b->m_typeIndex);
 }
 
-// 骨粉
 bool CropSystem::ApplyBonemeal(const BlockIterator& block)
 {
     if (!block.IsValid()) return false;
@@ -477,7 +512,6 @@ std::vector<CropDrop> CropSystem::Harvest(const BlockIterator& block, bool repla
     else
     {
         newType = BLOCK_TYPE_AIR;
-        // 🚀 取消注册作物
         UnregisterCrop(block.GetGlobalCoords());
     }
     
@@ -570,7 +604,16 @@ int CropSystem::HarvestArea(const FarmArea& area, bool replant)
         if (!drops.empty())
         {
             count++;
-            // TODO: 将掉落物传送到收集点或生成实体
+            // 生成掉落物实体
+            IntVec3 pos = crop.GetGlobalCoords();
+            for (const CropDrop& drop : drops)
+            {
+                int dropCount = drop.RollCount();
+                if (dropCount > 0)
+                {
+                    SpawnDropAtBlock(pos, drop.m_itemName, dropCount);
+                }
+            }
         }
     }
     
@@ -656,4 +699,58 @@ uint64_t CropSystem::HashBlockPos(const IntVec3& pos) const
     h ^= std::hash<int>()(pos.y) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>()(pos.z) + 0x9e3779b9 + (h << 6) + (h >> 2);
     return h;
+}
+
+
+void CropSystem::OnCropDestroyed(const IntVec3& position, ItemType droppedItem)
+{
+    // 直接使用内部的掉落物管理器
+    m_dropManager.SpawnCropDrops(position, droppedItem);
+    UnregisterCrop(position);
+}
+
+void CropSystem::SpawnDrop(const Vec3& position, uint8_t itemType, int count)
+{
+    m_dropManager.SpawnDrop(position, itemType, count);
+}
+
+void CropSystem::SpawnDropAtBlock(const IntVec3& blockPos, std::string itemName, int count)
+{
+    ItemType itemType = StringToItemType(itemName);
+    m_dropManager.SpawnDropAtBlock(blockPos, itemType, count);
+}
+
+std::vector<PendingDrop> CropSystem::CollectDropsNear(const Vec3& position, float radius)
+{
+    return m_dropManager.CollectDropsNear(position, radius);
+}
+
+std::vector<PendingDrop> CropSystem::CollectDropsInArea(const IntVec3& minCorner, const IntVec3& maxCorner)
+{
+    return m_dropManager.CollectDropsInArea(minCorner, maxCorner);
+}
+
+void CropSystem::ClearAllDrops()
+{
+    m_dropManager.ClearAllDrops();
+}
+
+DropStatistics CropSystem::GetDropStatistics() const
+{
+    return m_dropManager.GetStatistics();
+}
+
+int CropSystem::GetTotalDropCount() const
+{
+    return m_dropManager.GetTotalDropCount();
+}
+
+int CropSystem::GetTotalItemCount() const
+{
+    return m_dropManager.GetTotalItemCount();
+}
+
+void CropSystem::SetDropDebugRender(bool enable)
+{
+    m_dropManager.SetDebugRender(enable);
 }

@@ -62,7 +62,6 @@ void SaveChunkJob::Execute()
 {
     m_chunk->SetState(ChunkState::SAVING);
     m_chunk->Save();
-    // 保存完成后状态根据需要设置
 }
 
 void SaveChunkJob::OnComplete()
@@ -71,4 +70,22 @@ void SaveChunkJob::OnComplete()
     {
         delete m_chunk; 
     }
+}
+
+ChunkSortTransparencyJob::ChunkSortTransparencyJob(Chunk* chunk, const Vec3& cameraPos)
+    : ChunkJob(chunk, JOB_TYPE_WORKER)
+    , m_cameraPos(cameraPos)
+{
+}
+
+void ChunkSortTransparencyJob::Execute()
+{
+    if (m_chunk)
+    {
+        m_chunk->PrepareSortedIndices(m_cameraPos);
+    }
+}
+
+void ChunkSortTransparencyJob::OnComplete()
+{
 }

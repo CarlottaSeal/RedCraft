@@ -4,6 +4,9 @@
 #include <map>
 #include <string>
 
+#include "Engine/UI/UISpriteAtlas.h"
+
+enum ItemType : uint8_t;
 class Texture;
 class Renderer;
 
@@ -24,67 +27,59 @@ class Renderer;
 //   └────────────────────────────────┘
 // ============================================================================
 
-class GameUIAtlas
+class IconAtlas : UISpriteAtlas
 {
 public:
     // 构造函数 - 加载纹理并设置网格参数
     // gridLayout: 网格划分 (列数, 行数)，IntVec2(1,1) 表示不使用网格
     // gridRegionHeight: 网格区域占纹理高度的像素数（0 = 整张纹理都是网格）
-    GameUIAtlas(Renderer* renderer, 
+    IconAtlas(Renderer* renderer, 
                 std::string const& texturePath,
                 IntVec2 const& gridLayout = IntVec2(1, 1),
                 int gridRegionHeight = 0);
     
-    ~GameUIAtlas();
+    ~IconAtlas();
+
+    void InitializeHardCode();
     
-    // ========== 网格访问 ==========
-    // 通过行列获取 UV（仅在网格区域内有效）
     AABB2 GetGridSpriteUVs(int col, int row) const;
     AABB2 GetGridSpriteUVs(IntVec2 const& coords) const;
     
     // 通过线性索引获取（row * numCols + col）
     AABB2 GetGridSpriteUVsByIndex(int index) const;
+    AABB2 GetItemIconUVs(std::string const& itemName) const;
+    AABB2 GetBlockIconUVs(std::string const& blockName) const;
     
     // 获取网格信息
     IntVec2 GetGridLayout() const { return m_gridLayout; }
     int GetGridCellWidth() const { return m_cellWidth; }
     int GetGridCellHeight() const { return m_cellHeight; }
     
-    // ========== 命名访问 ==========
     // 定义一个命名精灵（像素坐标，相对于纹理左上角）
     void DefineSprite(std::string const& name, int pixelX, int pixelY, int width, int height);
-    
-    // 定义一个命名精灵（直接用 UV）
     void DefineSpriteUV(std::string const& name, Vec2 const& uvMins, Vec2 const& uvMaxs);
     
-    // 通过名称获取 UV
-    AABB2 GetSpriteUVs(std::string const& name) const;
+    AABB2 GetSpriteUVsByName(std::string const& name) const;
     bool HasSprite(std::string const& name) const;
+    AABB2 GetBlockIconUVs(uint8_t blockType) const;
+    AABB2 GetItemIconUVs(ItemType itemType, uint8_t blockType = 0) const;
     
-    // ========== 通用 ==========
     Texture* GetTexture() const { return m_texture; }
     IntVec2 GetTextureDimensions() const { return m_textureDimensions; }
     
-    // 像素坐标转 UV（工具方法）
     AABB2 PixelToUV(int pixelX, int pixelY, int width, int height) const;
     
 private:
     Texture* m_texture = nullptr;
-    IntVec2 m_textureDimensions;    // 纹理尺寸（像素）
+    IntVec2 m_textureDimensions;    
     
-    // 网格相关
-    IntVec2 m_gridLayout;           // 网格布局 (列数, 行数)
-    int m_gridRegionHeight = 0;     // 网格区域高度（像素），0 = 整张纹理
-    int m_cellWidth = 0;            // 单元格宽度（像素）
-    int m_cellHeight = 0;           // 单元格高度（像素）
+    IntVec2 m_gridLayout;           
+    int m_gridRegionHeight = 0;     
+    int m_cellWidth = 0;            
+    int m_cellHeight = 0;           
     
-    // 命名精灵
     std::map<std::string, AABB2> m_namedSprites;
 };
-
-// ============================================================================
-// GameUIAtlas 使用示例
-// ============================================================================
 
 /*
 推荐的纹理布局 (GameUI.png - 256x256):

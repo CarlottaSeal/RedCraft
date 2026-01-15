@@ -6,9 +6,10 @@
 #include "Engine/UI/Slider.h"
 #include "Engine/UI/Checkbox.h"
 #include "Engine/Core/EngineCommon.hpp"
-
+#include "Game/Game.hpp"
+extern Game* g_theGame;
 SettingsScreen::SettingsScreen(UISystem* uiSystem)
-    : UIScreen(uiSystem, UIScreenType::OPTIONS, true)
+    : UIScreen(uiSystem, UIScreenType::OPTIONS, g_theGame->m_screenCamera, true)
 {
 }
 
@@ -22,8 +23,9 @@ void SettingsScreen::Build()
     {
         return;
     }
-    
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildTitle();
@@ -43,7 +45,6 @@ void SettingsScreen::BuildBackground()
         false,
         Rgba8::BLACK
     );
-    m_elements.push_back(m_backgroundDimmer);
     
     AABB2 settingsPanelBounds(400, 150, 1200, 750);
     m_settingsPanel = new Panel(
@@ -54,7 +55,6 @@ void SettingsScreen::BuildBackground()
         true,
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_settingsPanel);
 }
 
 void SettingsScreen::BuildTitle()
@@ -66,7 +66,6 @@ void SettingsScreen::BuildTitle()
     
     Vec2 titlePos(450, 710);
     m_titleText = new Text(m_canvas, titlePos, titleSetting);
-    m_elements.push_back(m_titleText);
 }
 
 void SettingsScreen::BuildAudioSettings()
@@ -85,7 +84,6 @@ void SettingsScreen::BuildAudioSettings()
     
     Vec2 masterLabelPos(labelX, startY);
     m_masterVolumeLabel = new Text(m_canvas, masterLabelPos, labelSetting);
-    m_elements.push_back(m_masterVolumeLabel);
     
     AABB2 masterSliderBounds(sliderX, startY - 5, sliderX + sliderWidth, startY + 15);
     m_masterVolumeSlider = new Slider(
@@ -96,14 +94,12 @@ void SettingsScreen::BuildAudioSettings()
         Rgba8(150, 150, 150),
         Rgba8(100, 200, 100)
     );
-    m_elements.push_back(m_masterVolumeSlider);
     
     // Music Volume
     startY -= spacing;
     labelSetting.m_text = "Music Volume:";
     Vec2 musicLabelPos(labelX, startY);
     m_musicVolumeLabel = new Text(m_canvas, musicLabelPos, labelSetting);
-    m_elements.push_back(m_musicVolumeLabel);
     
     AABB2 musicSliderBounds(sliderX, startY - 5, sliderX + sliderWidth, startY + 15);
     m_musicVolumeSlider = new Slider(
@@ -114,14 +110,12 @@ void SettingsScreen::BuildAudioSettings()
         Rgba8(150, 150, 150),
         Rgba8(100, 150, 200)
     );
-    m_elements.push_back(m_musicVolumeSlider);
     
     // SFX Volume
     startY -= spacing;
     labelSetting.m_text = "Sound Effects:";
     Vec2 sfxLabelPos(labelX, startY);
     m_sfxVolumeLabel = new Text(m_canvas, sfxLabelPos, labelSetting);
-    m_elements.push_back(m_sfxVolumeLabel);
     
     AABB2 sfxSliderBounds(sliderX, startY - 5, sliderX + sliderWidth, startY + 15);
     m_sfxVolumeSlider = new Slider(
@@ -132,7 +126,6 @@ void SettingsScreen::BuildAudioSettings()
         Rgba8(150, 150, 150),
         Rgba8(200, 150, 100)
     );
-    m_elements.push_back(m_sfxVolumeSlider);
 }
 
 void SettingsScreen::BuildGraphicsSettings()
@@ -150,7 +143,6 @@ void SettingsScreen::BuildGraphicsSettings()
     labelSetting.m_text = "Field of View:";
     Vec2 fovLabelPos(labelX, startY);
     m_fovLabel = new Text(m_canvas, fovLabelPos, labelSetting);
-    m_elements.push_back(m_fovLabel);
     
     AABB2 fovSliderBounds(controlX, startY - 5, controlX + 300, startY + 15);
     m_fovSlider = new Slider(
@@ -161,14 +153,12 @@ void SettingsScreen::BuildGraphicsSettings()
         Rgba8(150, 150, 150),
         Rgba8(150, 200, 150)
     );
-    m_elements.push_back(m_fovSlider);
     
     // Fullscreen Checkbox
     startY -= spacing;
     labelSetting.m_text = "Fullscreen:";
     Vec2 fullscreenLabelPos(labelX, startY);
     Text* fullscreenLabel = new Text(m_canvas, fullscreenLabelPos, labelSetting);
-    m_elements.push_back(fullscreenLabel);
     
     AABB2 fullscreenCheckBounds(controlX, startY - 5, controlX + 30, startY + 25);
     m_fullscreenCheckbox = new Checkbox(
@@ -179,14 +169,12 @@ void SettingsScreen::BuildGraphicsSettings()
         Rgba8(100, 200, 100),
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_fullscreenCheckbox);
     
     // VSync Checkbox
     startY -= spacing;
     labelSetting.m_text = "VSync:";
     Vec2 vsyncLabelPos(labelX, startY);
     Text* vsyncLabel = new Text(m_canvas, vsyncLabelPos, labelSetting);
-    m_elements.push_back(vsyncLabel);
     
     AABB2 vsyncCheckBounds(controlX, startY - 5, controlX + 30, startY + 25);
     m_vsyncCheckbox = new Checkbox(
@@ -197,7 +185,6 @@ void SettingsScreen::BuildGraphicsSettings()
         Rgba8(100, 200, 100),
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_vsyncCheckbox);
 }
 
 void SettingsScreen::BuildButtons()
@@ -212,16 +199,14 @@ void SettingsScreen::BuildButtons()
         centerX + buttonWidth * 0.5f, buttonY + buttonHeight
     );
     m_doneButton = new Button(
-        nullptr,
+        m_canvas,
         doneBounds,
         Rgba8(100, 200, 100),
+        Rgba8::GREY,
         Rgba8::WHITE,
-        "CloselSettings",
         "Done",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_doneButton);
-    m_elements.push_back(m_doneButton);
 }
 
 void SettingsScreen::OnDoneClicked()

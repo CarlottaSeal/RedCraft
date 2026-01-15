@@ -16,6 +16,7 @@ public:
 
     static BlockDefinition const& GetBlockDef(std::string const& blockDefName);
     static BlockDefinition const& GetBlockDef(uint8_t const& blockUint);
+    static IntVec2 GetItemIconCoords(std::string const& itemName);
 
     static std::vector<BlockDefinition> s_blockDefs;
     static BlockDefinition const* s_blockDefsByType[NUM_BLOCK_TYPES];
@@ -38,8 +39,13 @@ public:
 
     bool m_isRedstonePowerable = false;
     bool m_isRedstoneComponent = false;
-    bool m_canBeRedstonePowered = false;  // 是否可以被红石充能激活
-    uint8_t m_defaultRedstonePower = 0;   // 默认输出功率
-    bool m_needsSupport = false;          // 是否需要支撑（红石线、火把等）
-    bool m_hasCustomCollision = false;    // 是否有自定义碰撞箱
+    bool m_canBeRedstonePowered = false;
+    uint8_t m_defaultRedstonePower = 0;
+    bool m_needsSupport = false;
+    bool m_hasCustomCollision = false;
+    
+    std::string m_droppedItemName = "";   
+    IntVec2 m_itemIconCoords;           
+    int m_itemIconSize = 32;             
+    static std::unordered_map<std::string, IntVec2> s_itemIconCoords;
 };

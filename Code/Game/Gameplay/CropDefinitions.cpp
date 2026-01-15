@@ -11,9 +11,6 @@ std::unordered_map<uint8_t, const CropDefinition*> CropDefinition::s_blockTypeTo
 std::unordered_map<std::string, const CropDefinition*> CropDefinition::s_nameToDefinition;
 bool CropDefinition::s_initialized = false;
 
-// ============================================================================
-// CropDrop
-// ============================================================================
 int CropDrop::RollCount() const
 {
     if (m_minCount == m_maxCount) return m_minCount;
@@ -22,12 +19,11 @@ int CropDrop::RollCount() const
     return dist(rng);
 }
 
-// ============================================================================
 // CropStage
-// ============================================================================
-CropStage& CropStage::AddDrop(uint8_t type, int minC, int maxC, float chance)
+CropStage& CropStage::AddDrop(BlockType type, int minC, int maxC, float chance)
 {
-    m_drops.emplace_back(type, minC, maxC, chance);
+    ItemType itemType = GetItemTypeFromBlock(type);
+    m_drops.emplace_back(itemType, minC, maxC, chance);
     return *this;
 }
 
@@ -55,9 +51,6 @@ CropDefinition& CropDefinition::SetCustomCondition(std::function<bool(const Bloc
 CropDefinition& CropDefinition::SetCustomGrowth(std::function<void(const BlockIterator&, World*, const CropDefinition&)> func) { m_customGrowthBehavior = func; return *this; }
 CropDefinition& CropDefinition::SetCustomHarvest(std::function<void(const BlockIterator&, World*, const CropDefinition&)> func) { m_customHarvestBehavior = func; return *this; }
 
-// ============================================================================
-// CropDefinition 查询
-// ============================================================================
 bool CropDefinition::IsBlockTypeInDefinition(uint8_t blockType) const
 {
     for (const auto& stage : m_stages)
@@ -125,9 +118,6 @@ const std::vector<CropDefinition>& CropDefinition::GetAllDefinitions()
 
 bool CropDefinition::IsGrowable(uint8_t blockType) { return GetDefinition(blockType) != nullptr; }
 
-// ============================================================================
-// 条件构建器
-// ============================================================================
 namespace CropConditions
 {
     GrowthRequirement NeedLight(uint8_t minLevel)
@@ -186,9 +176,6 @@ namespace CropConditions
     }
 }
 
-// ============================================================================
-// 作物定义初始化
-// ============================================================================
 void CropDefinition::InitializeAllDefinitions()
 {
     if (s_initialized) return;
@@ -196,10 +183,8 @@ void CropDefinition::InitializeAllDefinitions()
     s_definitions.clear();
     s_blockTypeToDefinition.clear();
     s_nameToDefinition.clear();
-
-    // ------------------------------------------------------------------------
+    s_definitions.reserve(20); 
     // 小麦 (Wheat) - 8阶段 (54-61)
-    // ------------------------------------------------------------------------
     {
         CropDefinition wheat("wheat", "Wheat");
         wheat.SetCategory(CropCategory::CROP)
@@ -223,9 +208,7 @@ void CropDefinition::InitializeAllDefinitions()
         RegisterDefinition(wheat);
     }
 
-    // ------------------------------------------------------------------------
     // 胡萝卜 (Carrots) - 4阶段 (62-65)
-    // ------------------------------------------------------------------------
     {
         CropDefinition carrots("carrots", "Carrots");
         carrots.SetCategory(CropCategory::CROP)
@@ -245,9 +228,7 @@ void CropDefinition::InitializeAllDefinitions()
         RegisterDefinition(carrots);
     }
 
-    // ------------------------------------------------------------------------
     // 土豆 (Potatoes) - 4阶段 (66-69)
-    // ------------------------------------------------------------------------
     {
         CropDefinition potatoes("potatoes", "Potatoes");
         potatoes.SetCategory(CropCategory::CROP)
@@ -267,9 +248,7 @@ void CropDefinition::InitializeAllDefinitions()
         RegisterDefinition(potatoes);
     }
 
-    // ------------------------------------------------------------------------
     // 甜菜根 (Beetroot) - 4阶段 (70-73)
-    // ------------------------------------------------------------------------
     {
         CropDefinition beetroot("beetroot", "Beetroot");
         beetroot.SetCategory(CropCategory::CROP)
@@ -289,9 +268,7 @@ void CropDefinition::InitializeAllDefinitions()
         RegisterDefinition(beetroot);
     }
 
-    // ------------------------------------------------------------------------
     // 甘蔗 (Sugar Cane) - 向上生长 (74)
-    // ------------------------------------------------------------------------
     {
         CropDefinition cane("sugar_cane", "Sugar Cane");
         cane.SetCategory(CropCategory::PLANT)

@@ -29,26 +29,21 @@ void ChunkSerializer::SaveToBinary(std::vector<uint8_t>& buffer) const
     if (!m_chunk || !m_chunk->m_blocks)
         return;
 
-    // 准备要压缩的数据（所有 Block 的原始字节）
     size_t totalBytes = CHUNK_TOTAL_BLOCKS * sizeof(Block);
     const uint8_t* blockBytes = reinterpret_cast<const uint8_t*>(m_chunk->m_blocks);
 
-    // 先做 RLE 压缩
     std::vector<uint8_t> compressed = RLECompression::CompressBytes(blockBytes, totalBytes);
     uint32_t compressedSize = static_cast<uint32_t>(compressed.size());
 
-    // 1. 写入 header（结构体格式不变）
     ChunkFileHeader header(CHUNK_BITS_X, CHUNK_BITS_Y, CHUNK_BITS_Z);
     size_t headerPos = buffer.size();
     buffer.resize(headerPos + sizeof(ChunkFileHeader));
     memcpy(buffer.data() + headerPos, &header, sizeof(ChunkFileHeader));
 
-    // 2. 紧接着写入压缩数据长度 compressedSize（uint32_t）
     size_t sizePos = buffer.size();
     buffer.resize(sizePos + sizeof(uint32_t));
     memcpy(buffer.data() + sizePos, &compressedSize, sizeof(uint32_t));
 
-    // 3. 最后写入压缩后的数据本体
     size_t compressedPos = buffer.size();
     buffer.resize(compressedPos + compressed.size());
     memcpy(buffer.data() + compressedPos, compressed.data(), compressed.size());

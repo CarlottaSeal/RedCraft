@@ -10,10 +10,11 @@
 #include "Game/World.h"
 #include "Game/Block.h"
 #include "Game/BlockDefinition.h"
+#include "Game/Game.hpp"
 #include "Game/Gameplay/RedstoneSimulator.h"
-
+extern Game* g_theGame;
 RedstoneConfigScreen::RedstoneConfigScreen(UISystem* uiSystem, World* world, const IntVec3& blockPos)
-    : UIScreen(uiSystem, UIScreenType::CUSTOM, true)
+    : UIScreen(uiSystem, UIScreenType::CUSTOM, g_theGame->m_screenCamera, true)
     , m_world(world)
     , m_targetBlockPos(blockPos)
 {
@@ -28,7 +29,6 @@ RedstoneConfigScreen::RedstoneConfigScreen(UISystem* uiSystem, World* world, con
 RedstoneConfigScreen::~RedstoneConfigScreen()
 {
 }
-
 void RedstoneConfigScreen::Build()
 {
     if (!m_canvas || !m_camera)
@@ -36,124 +36,161 @@ void RedstoneConfigScreen::Build()
         return;
     }
     
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildHeader();
     BuildDirectionSelector();
     BuildRepeaterConfig();
-    BuildComparatorConfig();
+    //BuildComparatorConfig();
     BuildObserverConfig();
     BuildPistonConfig();
     BuildButtons();
     
-    // 根据方块类型显示对应配置面板
     ShowConfigPanelForBlockType(m_targetBlockType);
     LoadCurrentConfig();
 }
 
 void RedstoneConfigScreen::BuildBackground()
 {
-    AABB2 screenBounds(0, 0, 1600, 900);
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    // 全屏半透明遮罩
+    AABB2 screenBounds(0, 0, size.x, size.y);
     m_backgroundDimmer = new Panel(
         m_canvas,
         screenBounds,
         Rgba8(0, 0, 0, 200),
         nullptr,
         false,
-        Rgba8::BLACK
+        Rgba8::BLACK,
+        AABB2(0, 0, 0, 0)  // UV
     );
-    m_elements.push_back(m_backgroundDimmer);
     
-    // 配置面板 - 红石风格的暗红色调
-    AABB2 configBounds(450, 150, 1150, 750);
+    // 配置面板 - 60% 宽度 × 70% 高度，居中
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
+    AABB2 configBounds(
+        panelX,
+        panelY,
+        panelX + panelWidth,
+        panelY + panelHeight
+    );
+    
     m_configPanel = new Panel(
         m_canvas,
         configBounds,
-        Rgba8(50, 35, 35),
+        Rgba8(45, 35, 35),
         nullptr,
         true,
-        Rgba8(120, 60, 60)
+        Rgba8(140, 70, 70),
+        AABB2(0, 0, 0, 0)  // UV
     );
-    m_elements.push_back(m_configPanel);
 }
 
 void RedstoneConfigScreen::BuildHeader()
 {
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
     // 标题
     TextSetting titleSetting;
     titleSetting.m_text = "Redstone Component Config";
-    titleSetting.m_color = Rgba8(255, 150, 150);
-    titleSetting.m_height = 36.0f;
+    titleSetting.m_color = Rgba8(255, 140, 140);
+    titleSetting.m_height = size.y * 0.04f;
+    titleSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 titlePos(480, 710);
+    Vec2 titlePos(panelX + panelWidth * 0.05f, panelY + panelHeight * 0.93f);
     m_titleText = new Text(m_canvas, titlePos, titleSetting);
-    m_elements.push_back(m_titleText);
     
     // 方块类型
     TextSetting typeSetting;
     typeSetting.m_text = "Type: " + GetBlockTypeName(m_targetBlockType);
-    typeSetting.m_color = Rgba8(200, 200, 200);
-    typeSetting.m_height = 22.0f;
+    typeSetting.m_color = Rgba8(220, 220, 220);
+    typeSetting.m_height = size.y * 0.025f;
+    typeSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 typePos(480, 675);
+    Vec2 typePos(panelX + panelWidth * 0.05f, panelY + panelHeight * 0.86f);
     m_blockTypeText = new Text(m_canvas, typePos, typeSetting);
-    m_elements.push_back(m_blockTypeText);
     
     // 位置信息
     TextSetting posSetting;
-    std::string posStr = "Position: (" + std::to_string(m_targetBlockPos.x) 
-                       + ", " + std::to_string(m_targetBlockPos.y)
-                       + ", " + std::to_string(m_targetBlockPos.z) + ")";
-    posSetting.m_text = posStr;
-    posSetting.m_color = Rgba8(150, 150, 150);
-    posSetting.m_height = 18.0f;
+    posSetting.m_text = Stringf("Position: (%d, %d, %d)", 
+        m_targetBlockPos.x, m_targetBlockPos.y, m_targetBlockPos.z);
+    posSetting.m_color = Rgba8(180, 180, 180);
+    posSetting.m_height = size.y * 0.020f;
+    posSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 posTextPos(480, 650);
+    Vec2 posTextPos(panelX + panelWidth * 0.05f, panelY + panelHeight * 0.81f);
     m_positionText = new Text(m_canvas, posTextPos, posSetting);
-    m_elements.push_back(m_positionText);
     
     // 方块图标
-    AABB2 iconBounds(1050, 660, 1120, 730);
+    float iconSize = size.y * 0.08f;
+    AABB2 iconBounds(
+        panelX + panelWidth * 0.88f,
+        panelY + panelHeight * 0.81f,
+        panelX + panelWidth * 0.88f + iconSize,
+        panelY + panelHeight * 0.81f + iconSize
+    );
     m_blockIcon = new Sprite(m_canvas, iconBounds, nullptr);
-    // TODO: 设置正确的纹理
-    m_elements.push_back(m_blockIcon);
 }
 
 void RedstoneConfigScreen::BuildDirectionSelector()
 {
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
     // 方向选择面板
-    AABB2 dirPanelBounds(480, 480, 780, 630);
+    float dirPanelWidth = panelWidth * 0.40f;
+    float dirPanelHeight = panelHeight * 0.35f;
+    float dirPanelX = panelX + panelWidth * 0.05f;
+    float dirPanelY = panelY + panelHeight * 0.38f;
+    
+    AABB2 dirPanelBounds(
+        dirPanelX,
+        dirPanelY,
+        dirPanelX + dirPanelWidth,
+        dirPanelY + dirPanelHeight
+    );
+    
     m_directionPanel = new Panel(
         m_canvas,
         dirPanelBounds,
-        Rgba8(40, 30, 30),
+        Rgba8(38, 28, 28),
         nullptr,
         true,
-        Rgba8(80, 50, 50)
+        Rgba8(90, 55, 55),
+        AABB2(0, 0, 0, 0)  // UV
     );
-    m_elements.push_back(m_directionPanel);
     
-    // 方向标签
+    // 标签
     TextSetting labelSetting;
     labelSetting.m_text = "Facing Direction";
-    labelSetting.m_color = Rgba8(200, 180, 180);
-    labelSetting.m_height = 20.0f;
+    labelSetting.m_color = Rgba8(220, 200, 200);
+    labelSetting.m_height = size.y * 0.022f;
+    labelSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 labelPos(500, 605);
+    Vec2 labelPos(dirPanelX + dirPanelWidth * 0.1f, dirPanelY + dirPanelHeight * 0.85f);
     m_directionLabel = new Text(m_canvas, labelPos, labelSetting);
-    m_elements.push_back(m_directionLabel);
     
-    // 方向按钮布局 (十字形)
-    //        [UP]
-    //   [W] [N] [E]
-    //        [S]
-    //       [DOWN]
-    
-    float btnSize = 40.0f;
-    float centerX = 630.0f;
-    float centerY = 545.0f;
-    float spacing = 45.0f;
+    // 方向按钮 - 十字布局
+    float btnSize = size.x * 0.028f;
+    float centerX = dirPanelX + dirPanelWidth * 0.5f;
+    float centerY = dirPanelY + dirPanelHeight * 0.42f;
+    float spacing = size.x * 0.032f;
     
     struct DirButton
     {
@@ -163,13 +200,15 @@ void RedstoneConfigScreen::BuildDirectionSelector()
     };
     
     DirButton buttons[] = {
-        { DIRECTION_UP,    0,  spacing * 1.5f, "U" },
-        { DIRECTION_NORTH, 0,  spacing * 0.5f, "N" },
-        { DIRECTION_WEST,  -spacing, 0,        "W" },
-        { DIRECTION_EAST,  spacing,  0,        "E" },
-        { DIRECTION_SOUTH, 0, -spacing * 0.5f, "S" },
-        { DIRECTION_DOWN,  0, -spacing * 1.5f, "D" }
+        { DIRECTION_UP,    0,           spacing * 1.5f, "U" },
+        { DIRECTION_NORTH, 0,           spacing * 0.5f, "N" },
+        { DIRECTION_WEST,  -spacing,    0,              "W" },
+        { DIRECTION_EAST,  spacing,     0,              "E" },
+        { DIRECTION_SOUTH, 0,          -spacing * 0.5f, "S" },
+        { DIRECTION_DOWN,  0,          -spacing * 1.5f, "D" }
     };
+    
+    m_directionButtons.clear();
     
     for (const DirButton& db : buttons)
     {
@@ -182,73 +221,103 @@ void RedstoneConfigScreen::BuildDirectionSelector()
         Rgba8 btnColor = GetDirectionButtonColor(db.dir, isSelected);
         
         Button* btn = new Button(
-            nullptr,
+            m_canvas,
             btnBounds,
             btnColor,
+            Rgba8(100, 100, 100),
             Rgba8::WHITE,
-            "SelectDir_" + std::to_string((int)db.dir),
             db.label,
-            Vec2(0.5f, 0.5f)
+            Vec2(0.5f, 0.5f),
+            "",
+            AABB2(0,0,0,0)
         );
-        
-        m_canvas->AddElementToCanvas(btn);
         m_directionButtons.push_back(btn);
-        m_elements.push_back(btn);
     }
 }
 
 void RedstoneConfigScreen::BuildRepeaterConfig()
 {
-    // 中继器配置面板
-    AABB2 repeaterBounds(800, 480, 1120, 630);
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
+    float repPanelWidth = panelWidth * 0.50f;
+    float repPanelHeight = panelHeight * 0.35f;
+    float repPanelX = panelX + panelWidth * 0.48f;
+    float repPanelY = panelY + panelHeight * 0.38f;
+    
+    AABB2 repeaterBounds(
+        repPanelX,
+        repPanelY,
+        repPanelX + repPanelWidth,
+        repPanelY + repPanelHeight
+    );
+    
     m_repeaterPanel = new Panel(
         m_canvas,
         repeaterBounds,
-        Rgba8(40, 30, 30),
+        Rgba8(38, 28, 28),
         nullptr,
         true,
-        Rgba8(80, 50, 50)
+        Rgba8(90, 55, 55),
+        AABB2(0, 0, 0, 0)  // UV
     );
     m_repeaterPanel->SetEnabled(false);
-    m_elements.push_back(m_repeaterPanel);
     
     // 延迟标签
     TextSetting delayLabelSetting;
     delayLabelSetting.m_text = "Delay (ticks)";
-    delayLabelSetting.m_color = Rgba8(200, 180, 180);
-    delayLabelSetting.m_height = 18.0f;
+    delayLabelSetting.m_color = Rgba8(220, 200, 200);
+    delayLabelSetting.m_height = size.y * 0.020f;
+    delayLabelSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 delayLabelPos(820, 605);
+    Vec2 delayLabelPos(repPanelX + repPanelWidth * 0.1f, repPanelY + repPanelHeight * 0.80f);
     m_delayLabel = new Text(m_canvas, delayLabelPos, delayLabelSetting);
     m_delayLabel->SetEnabled(false);
-    m_elements.push_back(m_delayLabel);
     
     // 延迟滑块
-    AABB2 sliderBounds(820, 560, 1050, 580);
+    float sliderWidth = repPanelWidth * 0.70f;
+    float sliderHeight = size.y * 0.022f;
+    AABB2 sliderBounds(
+        repPanelX + repPanelWidth * 0.1f,
+        repPanelY + repPanelHeight * 0.60f,
+        repPanelX + repPanelWidth * 0.1f + sliderWidth,
+        repPanelY + repPanelHeight * 0.60f + sliderHeight
+    );
+    
     m_delaySlider = new Slider(
         m_canvas,
         sliderBounds,
-        1.0f, 4.0f, 1.0f,  // 1-4 ticks
+        1.0f, 4.0f, 1.0f,
         Rgba8(60, 40, 40),
         Rgba8(120, 80, 80),
         Rgba8(200, 100, 100)
     );
     m_delaySlider->SetEnabled(false);
-    m_elements.push_back(m_delaySlider);
     
     // 延迟值显示
     TextSetting delayValueSetting;
     delayValueSetting.m_text = "1";
-    delayValueSetting.m_color = Rgba8(255, 200, 200);
-    delayValueSetting.m_height = 24.0f;
+    delayValueSetting.m_color = Rgba8(255, 180, 180);
+    delayValueSetting.m_height = size.y * 0.028f;
+    delayValueSetting.m_alignment = Vec2(0.5f, 0.5f);
     
-    Vec2 delayValuePos(1070, 560);
+    Vec2 delayValuePos(repPanelX + repPanelWidth * 0.88f, repPanelY + repPanelHeight * 0.61f);
     m_delayValueText = new Text(m_canvas, delayValuePos, delayValueSetting);
     m_delayValueText->SetEnabled(false);
-    m_elements.push_back(m_delayValueText);
     
     // 锁定复选框
-    AABB2 lockedCheckBounds(820, 510, 850, 540);
+    float checkSize = size.y * 0.033f;
+    AABB2 lockedCheckBounds(
+        repPanelX + repPanelWidth * 0.1f,
+        repPanelY + repPanelHeight * 0.25f,
+        repPanelX + repPanelWidth * 0.1f + checkSize,
+        repPanelY + repPanelHeight * 0.25f + checkSize
+    );
+    
     m_lockedCheckbox = new Checkbox(
         m_canvas,
         lockedCheckBounds,
@@ -258,203 +327,261 @@ void RedstoneConfigScreen::BuildRepeaterConfig()
         Rgba8(100, 60, 60)
     );
     m_lockedCheckbox->SetEnabled(false);
-    m_elements.push_back(m_lockedCheckbox);
     
     // 锁定标签
     TextSetting lockedLabelSetting;
     lockedLabelSetting.m_text = "Locked";
-    lockedLabelSetting.m_color = Rgba8(180, 160, 160);
-    lockedLabelSetting.m_height = 16.0f;
+    lockedLabelSetting.m_color = Rgba8(200, 180, 180);
+    lockedLabelSetting.m_height = size.y * 0.018f;
+    lockedLabelSetting.m_alignment = Vec2(0.0f, 0.5f);
     
-    Vec2 lockedLabelPos(860, 515);
+    Vec2 lockedLabelPos(
+        repPanelX + repPanelWidth * 0.1f + checkSize * 1.3f,
+        repPanelY + repPanelHeight * 0.265f
+    );
     m_lockedLabel = new Text(m_canvas, lockedLabelPos, lockedLabelSetting);
     m_lockedLabel->SetEnabled(false);
-    m_elements.push_back(m_lockedLabel);
 }
 
 void RedstoneConfigScreen::BuildComparatorConfig()
 {
-    // // 比较器配置面板
-    // AABB2 comparatorBounds(800, 480, 1120, 630);
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
+    // 比较器面板
+    float compPanelWidth = panelWidth * 0.50f;
+    float compPanelHeight = panelHeight * 0.35f;
+    float compPanelX = panelX + panelWidth * 0.48f;
+    float compPanelY = panelY + panelHeight * 0.38f;
+    
+    AABB2 comparatorBounds(
+        compPanelX,
+        compPanelY,
+        compPanelX + compPanelWidth,
+        compPanelY + compPanelHeight
+    );
+    
     // m_comparatorPanel = new Panel(
     //     m_canvas,
     //     comparatorBounds,
-    //     Rgba8(40, 30, 30),
+    //     Rgba8(38, 28, 28),
     //     nullptr,
     //     true,
-    //     Rgba8(80, 50, 50)
+    //     Rgba8(90, 55, 55),
+    //     AABB2(0, 0, 0, 0)  // UV
     // );
     // m_comparatorPanel->SetEnabled(false);
-    // m_elements.push_back(m_comparatorPanel);
     
-    // 模式标签
-    // TextSetting modeLabelSetting;
-    // modeLabelSetting.m_text = "Operation Mode";
-    // modeLabelSetting.m_color = Rgba8(200, 180, 180);
-    // modeLabelSetting.m_height = 18.0f;
-    //
-    // Vec2 modeLabelPos(820, 605);
-    // m_modeLabel = new Text(m_canvas, modeLabelPos, modeLabelSetting);
-    // m_modeLabel->SetEnabled(false);
-    // m_elements.push_back(m_modeLabel);
-    
-    // // 比较模式按钮
-    // AABB2 compareBtnBounds(820, 540, 960, 585);
-    // m_compareModeButton = new Button(
-    //     nullptr,
-    //     compareBtnBounds,
-    //     Rgba8(100, 150, 100),
-    //     Rgba8::WHITE,
-    //     "ComparatorCompare",
-    //     "Compare",
-    //     Vec2(0.5f, 0.5f)
-    // );
-    // m_compareModeButton->SetEnabled(false);
-    // m_canvas->AddElementToCanvas(m_compareModeButton);
-    // m_elements.push_back(m_compareModeButton);
-    
-    // 相减模式按钮
-    // AABB2 subtractBtnBounds(970, 540, 1110, 585);
-    // m_subtractModeButton = new Button(
-    //     nullptr,
-    //     subtractBtnBounds,
-    //     Rgba8(80, 80, 80),
-    //     Rgba8::WHITE,
-    //     "ComparatorSubtract",
-    //     "Subtract",
-    //     Vec2(0.5f, 0.5f)
-    // );
-    // m_subtractModeButton->SetEnabled(false);
-    // m_canvas->AddElementToCanvas(m_subtractModeButton);
-    // m_elements.push_back(m_subtractModeButton);
+    // 其他组件...
 }
 
 void RedstoneConfigScreen::BuildObserverConfig()
 {
-    // 侦测器配置面板
-    AABB2 observerBounds(800, 480, 1120, 630);
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
+    // Observer面板
+    float obsPanelWidth = panelWidth * 0.50f;
+    float obsPanelHeight = panelHeight * 0.35f;
+    float obsPanelX = panelX + panelWidth * 0.48f;
+    float obsPanelY = panelY + panelHeight * 0.38f;
+    
+    AABB2 observerBounds(
+        obsPanelX,
+        obsPanelY,
+        obsPanelX + obsPanelWidth,
+        obsPanelY + obsPanelHeight
+    );
+    
     m_observerPanel = new Panel(
         m_canvas,
         observerBounds,
-        Rgba8(40, 30, 30),
+        Rgba8(38, 28, 28),
         nullptr,
         true,
-        Rgba8(80, 50, 50)
+        Rgba8(90, 55, 55),
+        AABB2(0, 0, 0, 0)  // UV
     );
     m_observerPanel->SetEnabled(false);
-    m_elements.push_back(m_observerPanel);
     
     // 观察方向标签
-    TextSetting watchLabelSetting;
-    watchLabelSetting.m_text = "Watching Direction";
-    watchLabelSetting.m_color = Rgba8(200, 180, 180);
-    watchLabelSetting.m_height = 18.0f;
+    TextSetting observingLabelSetting;
+    observingLabelSetting.m_text = "Observing Direction:";
+    observingLabelSetting.m_color = Rgba8(220, 200, 200);
+    observingLabelSetting.m_height = size.y * 0.020f;
+    observingLabelSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 watchLabelPos(820, 605);
-    m_watchDirLabel = new Text(m_canvas, watchLabelPos, watchLabelSetting);
-    m_watchDirLabel->SetEnabled(false);
-    m_elements.push_back(m_watchDirLabel);
+    Vec2 obsLabelPos(obsPanelX + obsPanelWidth * 0.1f, obsPanelY + obsPanelHeight * 0.70f);
+    m_observerDirectionLabel = new Text(m_canvas, obsLabelPos, observingLabelSetting);
+    m_observerDirectionLabel->SetEnabled(false);
     
-    // 侦测器信息
-    TextSetting infoSetting;
-    infoSetting.m_text = "Observer detects block changes\nin the direction it faces.\nOutput signal on the back.";
-    infoSetting.m_color = Rgba8(150, 150, 150);
-    infoSetting.m_height = 14.0f;
+    // 方向值显示
+    TextSetting dirValueSetting;
+    dirValueSetting.m_text = "North";
+    dirValueSetting.m_color = Rgba8(255, 180, 180);
+    dirValueSetting.m_height = size.y * 0.024f;
+    dirValueSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 infoPos(820, 570);
-    m_observerInfoText = new Text(m_canvas, infoPos, infoSetting);
-    m_observerInfoText->SetEnabled(false);
-    m_elements.push_back(m_observerInfoText);
+    Vec2 dirValuePos(obsPanelX + obsPanelWidth * 0.1f, obsPanelY + obsPanelHeight * 0.55f);
+    m_observerDirectionText = new Text(m_canvas, dirValuePos, dirValueSetting);
+    m_observerDirectionText->SetEnabled(false);
+    
+    // 状态文本
+    TextSetting statusSetting;
+    statusSetting.m_text = "Status: Idle";
+    statusSetting.m_color = Rgba8(180, 180, 180);
+    statusSetting.m_height = size.y * 0.018f;
+    statusSetting.m_alignment = Vec2(0.0f, 1.0f);
+    
+    Vec2 statusPos(obsPanelX + obsPanelWidth * 0.1f, obsPanelY + obsPanelHeight * 0.35f);
+    m_observerStatusText = new Text(m_canvas, statusPos, statusSetting);
+    m_observerStatusText->SetEnabled(false);
 }
 
 void RedstoneConfigScreen::BuildPistonConfig()
 {
-    // 活塞配置面板
-    AABB2 pistonBounds(800, 480, 1120, 630);
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
+    // Piston面板
+    float pistPanelWidth = panelWidth * 0.50f;
+    float pistPanelHeight = panelHeight * 0.35f;
+    float pistPanelX = panelX + panelWidth * 0.48f;
+    float pistPanelY = panelY + panelHeight * 0.38f;
+    
+    AABB2 pistonBounds(
+        pistPanelX,
+        pistPanelY,
+        pistPanelX + pistPanelWidth,
+        pistPanelY + pistPanelHeight
+    );
+    
     m_pistonPanel = new Panel(
         m_canvas,
         pistonBounds,
-        Rgba8(40, 30, 30),
+        Rgba8(38, 28, 28),
         nullptr,
         true,
-        Rgba8(80, 50, 50)
+        Rgba8(90, 55, 55),
+        AABB2(0, 0, 0, 0)  // UV
     );
     m_pistonPanel->SetEnabled(false);
-    m_elements.push_back(m_pistonPanel);
     
-    // 活塞类型标签
-    TextSetting typeLabelSetting;
-    typeLabelSetting.m_text = "Piston Type: Normal";
-    typeLabelSetting.m_color = Rgba8(200, 180, 180);
-    typeLabelSetting.m_height = 18.0f;
+    // 活塞类型
+    TextSetting typeSetting;
+    typeSetting.m_text = "Type: Piston";
+    typeSetting.m_color = Rgba8(220, 200, 200);
+    typeSetting.m_height = size.y * 0.020f;
+    typeSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 typeLabelPos(820, 605);
-    m_pistonTypeLabel = new Text(m_canvas, typeLabelPos, typeLabelSetting);
-    m_pistonTypeLabel->SetEnabled(false);
-    m_elements.push_back(m_pistonTypeLabel);
+    Vec2 typePos(pistPanelX + pistPanelWidth * 0.1f, pistPanelY + pistPanelHeight * 0.75f);
+    m_pistonTypeText = new Text(m_canvas, typePos, typeSetting);
+    m_pistonTypeText->SetEnabled(false);
     
-    // 活塞状态
+    // 伸出状态
     TextSetting stateSetting;
     stateSetting.m_text = "State: Retracted";
-    stateSetting.m_color = Rgba8(150, 200, 150);
-    stateSetting.m_height = 16.0f;
+    stateSetting.m_color = Rgba8(180, 180, 180);
+    stateSetting.m_height = size.y * 0.018f;
+    stateSetting.m_alignment = Vec2(0.0f, 1.0f);
     
-    Vec2 statePos(820, 575);
-    m_pistonStateText = new Text(m_canvas, statePos, stateSetting);
-    m_pistonStateText->SetEnabled(false);
-    m_elements.push_back(m_pistonStateText);
+    Vec2 statePos(pistPanelX + pistPanelWidth * 0.1f, pistPanelY + pistPanelHeight * 0.60f);
+    m_pistonExtendedText = new Text(m_canvas, statePos, stateSetting);
+    m_pistonExtendedText->SetEnabled(false);
     
     // 测试伸出按钮
-    AABB2 testBtnBounds(820, 510, 1000, 555);
-    m_testExtendButton = new Button(
-        nullptr,
-        testBtnBounds,
-        Rgba8(100, 120, 150),
-        Rgba8::WHITE,
-        "PistonTestExtend",
-        "Test Extend",
-        Vec2(0.5f, 0.5f)
+    float btnWidth = pistPanelWidth * 0.72f;
+    float btnHeight = size.y * 0.036f;
+    
+    AABB2 testBtnBounds(
+        pistPanelX + pistPanelWidth * 0.14f,
+        pistPanelY + pistPanelHeight * 0.25f,
+        pistPanelX + pistPanelWidth * 0.14f + btnWidth,
+        pistPanelY + pistPanelHeight * 0.25f + btnHeight
     );
-    m_testExtendButton->SetEnabled(false);
-    m_canvas->AddElementToCanvas(m_testExtendButton);
-    m_elements.push_back(m_testExtendButton);
+    
+    m_pistonTestButton = new Button(
+        m_canvas,
+        testBtnBounds,
+        Rgba8(70, 100, 120),
+        Rgba8(100, 140, 170),
+        Rgba8::WHITE,
+        "Test Extend",
+        Vec2(0.5f, 0.5f),
+        "",
+        AABB2(0, 0, 0, 0) 
+    );
+    m_pistonTestButton->SetEnabled(false);
 }
 
 void RedstoneConfigScreen::BuildButtons()
 {
-    float buttonWidth = 150.0f;
-    float buttonHeight = 45.0f;
-    float spacing = 20.0f;
-    float bottomY = 180.0f;
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
     
-    // 应用按钮
-    AABB2 applyBounds(700, bottomY, 700 + buttonWidth, bottomY + buttonHeight);
+    float panelWidth = size.x * 0.60f;
+    float panelHeight = size.y * 0.70f;
+    float panelX = (size.x - panelWidth) * 0.5f;
+    float panelY = (size.y - panelHeight) * 0.5f;
+    
+    float btnWidth = size.x * 0.09f;
+    float btnHeight = size.y * 0.044f;
+    float spacing = size.x * 0.02f;
+    
+    float totalWidth = 2 * btnWidth + spacing;
+    float startX = panelX + (panelWidth - totalWidth) * 0.5f;
+    float btnY = panelY + panelHeight * 0.08f;
+    
+    // Apply 按钮
+    AABB2 applyBounds(
+        startX,
+        btnY,
+        startX + btnWidth,
+        btnY + btnHeight
+    );
+    
     m_applyButton = new Button(
-        nullptr,
+        m_canvas,
         applyBounds,
-        Rgba8(80, 150, 80),
+        Rgba8(60, 120, 60),
+        Rgba8(80, 160, 80),
         Rgba8::WHITE,
-        "RedstoneConfigApply",
         "Apply",
-        Vec2(0.5f, 0.5f)
+        Vec2(0.5f, 0.5f),
+        "",
+        AABB2(0, 0, 0, 0)  // UV
     );
-    m_canvas->AddElementToCanvas(m_applyButton);
-    m_elements.push_back(m_applyButton);
     
-    // 取消按钮
-    AABB2 cancelBounds(700 + buttonWidth + spacing, bottomY, 
-                       700 + buttonWidth * 2 + spacing, bottomY + buttonHeight);
-    m_cancelButton = new Button(
-        nullptr,
-        cancelBounds,
-        Rgba8(150, 80, 80),
-        Rgba8::WHITE,
-        "RedstoneConfigCancel",
-        "Cancel",
-        Vec2(0.5f, 0.5f)
+    // Cancel 按钮
+    AABB2 cancelBounds(
+        startX + btnWidth + spacing,
+        btnY,
+        startX + btnWidth + spacing + btnWidth,
+        btnY + btnHeight
     );
-    m_canvas->AddElementToCanvas(m_cancelButton);
-    m_elements.push_back(m_cancelButton);
+    
+    m_cancelButton = new Button(
+        m_canvas,
+        cancelBounds,
+        Rgba8(120, 50, 50),
+        Rgba8(160, 70, 70),
+        Rgba8::WHITE,
+        "Cancel",
+        Vec2(0.5f, 0.5f),
+        "",
+        AABB2(0, 0, 0, 0)  // UV
+    );
 }
 
 void RedstoneConfigScreen::ShowConfigPanelForBlockType(uint8_t blockType)
@@ -486,13 +613,13 @@ void RedstoneConfigScreen::ShowConfigPanelForBlockType(uint8_t blockType)
     //     if (m_compareModeButton) m_compareModeButton->SetEnabled(true);
     //     if (m_subtractModeButton) m_subtractModeButton->SetEnabled(true);
     // }
-    else if (blockType == BLOCK_TYPE_OBSERVER)
+    else if (blockType == BLOCK_TYPE_REDSTONE_OBSERVER)
     {
         if (m_observerPanel) m_observerPanel->SetEnabled(true);
         if (m_watchDirLabel) m_watchDirLabel->SetEnabled(true);
         if (m_observerInfoText) m_observerInfoText->SetEnabled(true);
     }
-    else if (blockType == BLOCK_TYPE_PISTON || blockType == BLOCK_TYPE_STICKY_PISTON)
+    else if (blockType == BLOCK_TYPE_REDSTONE_PISTON || blockType == BLOCK_TYPE_REDSTONE_STICKY_PISTON)
     {
         if (m_pistonPanel) m_pistonPanel->SetEnabled(true);
         if (m_pistonTypeLabel) m_pistonTypeLabel->SetEnabled(true);
@@ -502,7 +629,7 @@ void RedstoneConfigScreen::ShowConfigPanelForBlockType(uint8_t blockType)
         // 更新活塞类型标签
         if (m_pistonTypeLabel)
         {
-            std::string typeStr = (blockType == BLOCK_TYPE_STICKY_PISTON) 
+            std::string typeStr = (blockType == BLOCK_TYPE_REDSTONE_STICKY_PISTON) 
                 ? "Piston Type: Sticky" 
                 : "Piston Type: Normal";
             m_pistonTypeLabel->SetText(typeStr);
@@ -583,7 +710,7 @@ void RedstoneConfigScreen::LoadCurrentConfig()
     //         if (m_subtractModeButton) m_subtractModeButton->SetBackgroundColor(Rgba8(80, 80, 80));
     //     }
     // }
-    else if (m_targetBlockType == BLOCK_TYPE_PISTON || m_targetBlockType == BLOCK_TYPE_STICKY_PISTON)
+    else if (m_targetBlockType == BLOCK_TYPE_REDSTONE_PISTON || m_targetBlockType == BLOCK_TYPE_REDSTONE_STICKY_PISTON)
     {
         bool extended = block.IsPistonExtended();
         if (m_pistonStateText)
@@ -650,6 +777,12 @@ void RedstoneConfigScreen::Update(float deltaSeconds)
         int delay = (int)m_delaySlider->GetValue();
         m_delayValueText->SetText(std::to_string(delay));
     }
+}
+
+void RedstoneConfigScreen::Render() const
+{
+    g_theRenderer->BindTexture(nullptr);
+    UIScreen::Render();
 }
 
 void RedstoneConfigScreen::OnEnter()
@@ -794,13 +927,13 @@ std::string RedstoneConfigScreen::GetBlockTypeName(uint8_t blockType) const
     case BLOCK_TYPE_REPEATER_OFF:
     case BLOCK_TYPE_REPEATER_ON:
         return "Redstone Repeater";
-    case BLOCK_TYPE_OBSERVER:
+    case BLOCK_TYPE_REDSTONE_OBSERVER:
         return "Observer";
-    case BLOCK_TYPE_PISTON:
+    case BLOCK_TYPE_REDSTONE_PISTON:
         return "Piston";
-    case BLOCK_TYPE_STICKY_PISTON:
+    case BLOCK_TYPE_REDSTONE_STICKY_PISTON:
         return "Sticky Piston";
-    case BLOCK_TYPE_LEVER:
+    case BLOCK_TYPE_REDSTONE_LEVER:
         return "Lever";
     case BLOCK_TYPE_BUTTON_STONE:
         return "Stone Button";

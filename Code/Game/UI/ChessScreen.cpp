@@ -5,9 +5,10 @@
 #include "Engine/UI/Sprite.h"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Input/InputSystem.hpp"
-
+#include "Game/Game.hpp"
+extern Game* g_theGame;
 ChestScreen::ChestScreen(UISystem* uiSystem, int chestID)
-    : UIScreen(uiSystem, UIScreenType::CHEST, true)
+    : UIScreen(uiSystem, UIScreenType::CHEST, g_theGame->m_screenCamera, true)
     , m_chestID(chestID)
 {
 }
@@ -22,8 +23,9 @@ void ChestScreen::Build()
     {
         return;
     }
-    
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildChestGrid();
@@ -44,7 +46,6 @@ void ChestScreen::BuildBackground()
         false,
         Rgba8::BLACK
     );
-    m_elements.push_back(m_backgroundDimmer);
     
     // 箱子面板
     AABB2 chestPanelBounds(300, 500, 1300, 750);
@@ -56,7 +57,6 @@ void ChestScreen::BuildBackground()
         true,
         Rgba8(120, 100, 80)
     );
-    m_elements.push_back(m_chestPanel);
     
     // 玩家背包面板
     AABB2 playerPanelBounds(300, 100, 1300, 450);
@@ -68,7 +68,6 @@ void ChestScreen::BuildBackground()
         true,
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_playerPanel);
     
     // 箱子标题
     TextSetting chestTitleSetting;
@@ -78,7 +77,6 @@ void ChestScreen::BuildBackground()
     
     Vec2 chestTitlePos(350, 720);
     m_chestTitleText = new Text(m_canvas, chestTitlePos, chestTitleSetting);
-    m_elements.push_back(m_chestTitleText);
     
     // 背包标题
     TextSetting invTitleSetting;
@@ -88,7 +86,6 @@ void ChestScreen::BuildBackground()
     
     Vec2 invTitlePos(350, 420);
     m_inventoryTitleText = new Text(m_canvas, invTitlePos, invTitleSetting);
-    m_elements.push_back(m_inventoryTitleText);
 }
 
 void ChestScreen::BuildChestGrid()
@@ -110,7 +107,6 @@ void ChestScreen::BuildChestGrid()
             
             ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
             m_chestSlots.push_back(slot);
-            m_elements.push_back(slot);
         }
     }
 }
@@ -135,7 +131,6 @@ void ChestScreen::BuildPlayerGrid()
             
             ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
             m_playerSlots.push_back(slot);
-            m_elements.push_back(slot);
         }
     }
     
@@ -152,7 +147,6 @@ void ChestScreen::BuildPlayerGrid()
         
         ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
         m_playerSlots.push_back(slot);
-        m_elements.push_back(slot);
     }
 }
 
@@ -161,7 +155,6 @@ void ChestScreen::BuildDraggedItemSprite()
     AABB2 spriteBounds(0, 0, 64, 64);
     m_draggedItemSprite = new Sprite(m_canvas, spriteBounds, nullptr);
     m_draggedItemSprite->SetEnabled(false);
-    m_elements.push_back(m_draggedItemSprite);
 }
 
 void ChestScreen::RegisterSlotEvents()

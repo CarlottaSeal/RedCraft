@@ -121,8 +121,8 @@ private:
     Direction GetOppositeDir(Direction dir) const;
     IntVec3 GetDirectionVector(Direction dir) const;
     void MarkChunkDirty(const BlockIterator& block);
+    bool IsBlockProvidingPowerToDirection(const BlockIterator& source, Direction toDir) const;
 
-    
 private:
     World* m_world = nullptr;
     

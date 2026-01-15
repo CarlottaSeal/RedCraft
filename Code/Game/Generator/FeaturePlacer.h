@@ -30,6 +30,11 @@ public:
                    BiomeGenerator::BiomeType biome, float temperature);
     
     TreeStamp GetTreeStamp(BiomeGenerator::BiomeType biome);
+
+    bool ShouldPlaceUnderwaterPlant(int worldX, int worldY, BiomeGenerator::BiomeType biome);
+    void PlaceUnderwaterPlants(Chunk* chunk, int localX, int localY, int seabedZ, 
+                                BiomeGenerator::BiomeType biome, float temperature);
+
     
 private:
     void InitializeTreeStamps();
@@ -42,7 +47,13 @@ private:
     
     bool CanPlaceTree(Chunk* chunk, int localX, int localY, int surfaceZ, 
                      const TreeStamp& stamp);
+
+    void PlaceSeagrass(Chunk* chunk, int x, int y, int z);
+    void PlaceTallSeagrass(Chunk* chunk, int x, int y, int z);
+    void PlaceKelp(Chunk* chunk, int x, int y, int z, int waterDepth);
+    void PlaceCoralBlock(Chunk* chunk, int x, int y, int z);
     
+private:
     std::vector<TreeStamp> m_oakVariants;
     std::vector<TreeStamp> m_birchVariants;
     std::vector<TreeStamp> m_spruceVariants;

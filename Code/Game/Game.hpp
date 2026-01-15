@@ -8,7 +8,10 @@
 #include <vector>
 
 #include "Engine/Renderer/SpriteSheet.hpp"
+#include "Generator/WorldGenPipeline.h"
 
+class WorldGenPipeline;
+class IconAtlas;
 class GameUIManager;
 class World;
 class Player;
@@ -24,7 +27,7 @@ public:
 	void Startup();
 	void ForceShutdownCurrentWorld();
 
-	void Update();
+	void Update(float deltaSeconds);
 	void Render() const;
 
 	void AdjustForPauseAndTimeDistortion();
@@ -39,9 +42,8 @@ public:
 	Player* m_player;
 
 	SpriteSheet* m_spriteSheet; //common spritesheet
-
-	GameUIManager* m_gameUIManager;
-
+	//IconAtlas* m_uiAtlas = nullptr;
+	
 	//Debug
 	int m_numOfVerts;
 	int m_numOfIndices;
@@ -52,7 +54,7 @@ private:
 	void AttractModeUpdate();
 	void AttractStateRender() const;
 
-	void GameStateUpdate();
+	void GameStateUpdate(float deltaSeconds);
 	void GameStateRender() const;
 	void GameAxisDebugRender() const;
 	void ImGuiUpdate();
@@ -61,8 +63,13 @@ private:
 	void PrintGameControlToDevConsole();
 	void DebugRenderSystemInputUpdate();
 	void DebugAddWorldAxisText(Mat44 worldMat);
+	void DebugTestSaveSystemPaths();
 
 public:
+	WorldGenPipeline::WorldGenMode m_selectedWorldType = WorldGenPipeline::WorldGenMode::NORMAL;
+	World* m_infiniteWorld = nullptr;  // 存储无限世界实例
+	World* m_farmWorld = nullptr;
+	
 	float g_densityNoiseScale = 128.0f;
 	int g_densityNoiseOctaves = 8;
 	float g_terrainHeight = 64.0f;
@@ -109,9 +116,10 @@ public:
 	bool g_showChunkBounds = true; 
 
 	World* m_currentWorld;
+	
 private:
-
-private:
+	float m_maxFPS;
+	
 	bool m_isSlowMo;
 	bool m_isUsingUserTimeScale;
 
@@ -125,10 +133,10 @@ private:
 	std::vector<Vertex_PCU> m_gridVertexes;
 };
 
-bool Event_ResumeGame(EventArgs& args);
-bool Event_OpenSettings(EventArgs& args);
-bool Event_SaveGame(EventArgs& args);
-bool Event_BackToMainMenu(EventArgs& args);
+// bool Event_ResumeGame(EventArgs& args);
+// bool Event_OpenSettings(EventArgs& args);
+// bool Event_SaveGame(EventArgs& args);
+// bool Event_BackToMainMenu(EventArgs& args);
 
 
 

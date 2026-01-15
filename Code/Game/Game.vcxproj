@@ -374,8 +374,12 @@
     <ClCompile Include="ChunkJob.cpp" />
     <ClCompile Include="Gameplay\CropCommon.cpp" />
     <ClCompile Include="Gameplay\CropDefinitions.cpp" />
+    <ClCompile Include="Gameplay\CropDropManager.cpp" />
     <ClCompile Include="Gameplay\CropSystem.cpp" />
+    <ClCompile Include="Gameplay\Item.cpp" />
+    <ClCompile Include="Gameplay\PlayerInventory.cpp" />
     <ClCompile Include="Gameplay\RedstoneSimulator.cpp" />
+    <ClCompile Include="Gameplay\WorldConfig.cpp" />
     <ClCompile Include="Generator\BiomeGenerator.cpp" />
     <ClCompile Include="Generator\CaveGenerator.cpp" />
     <ClCompile Include="Generator\FeaturePlacer.cpp" />
@@ -397,10 +401,16 @@
     <ClCompile Include="UI\InventoryScreen.cpp" />
     <ClCompile Include="UI\ItemSlot.cpp" />
     <ClCompile Include="UI\MainMenuScreen.cpp" />
-    <ClCompile Include="UI\GameUIAtlas.cpp" />
+    <ClCompile Include="UI\IconAtlas.cpp" />
     <ClCompile Include="UI\PauseMenuScreen.cpp" />
     <ClCompile Include="UI\RedstoneConfigScreen.cpp" />
     <ClCompile Include="UI\SettingsScreen.cpp" />
+    <ClCompile Include="UI\WorldSelectScreen.cpp" />
+    <ClCompile Include="Weather\CloudSystem.cpp" />
+    <ClCompile Include="Weather\MediumSystem.cpp" />
+    <ClCompile Include="Weather\MediumTypes.cpp" />
+    <ClCompile Include="Weather\WeatherParticleRenderer.cpp" />
+    <ClCompile Include="Weather\WeatherSystem.cpp" />
     <ClCompile Include="World.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -417,9 +427,13 @@
     <ClInclude Include="ChunkJob.h" />
     <ClInclude Include="Gameplay\CropCommon.h" />
     <ClInclude Include="Gameplay\CropDefinitions.h" />
+    <ClInclude Include="Gameplay\CropDropManager.h" />
     <ClInclude Include="Gameplay\CropSystem.h" />
+    <ClInclude Include="Gameplay\Item.h" />
+    <ClInclude Include="Gameplay\PlayerInventory.h" />
     <ClInclude Include="Gameplay\RedstoneCommon.h" />
     <ClInclude Include="Gameplay\RedstoneSimulator.h" />
+    <ClInclude Include="Gameplay\WorldConfig.h" />
     <ClInclude Include="Generator\BiomeGenerator.h" />
     <ClInclude Include="Generator\CaveGenerator.h" />
     <ClInclude Include="Generator\FeaturePlacer.h" />
@@ -441,10 +455,16 @@
     <ClInclude Include="UI\InventoryScreen.h" />
     <ClInclude Include="UI\ItemSlot.h" />
     <ClInclude Include="UI\MainMenuScreen.h" />
-    <ClInclude Include="UI\GameUIAtlas.h" />
+    <ClInclude Include="UI\IconAtlas.h" />
     <ClInclude Include="UI\PauseMenuScreen.h" />
     <ClInclude Include="UI\RedstoneConfigScreen.h" />
     <ClInclude Include="UI\SettingsScreen.h" />
+    <ClInclude Include="UI\WorldSelectScreen.h" />
+    <ClInclude Include="Weather\CloudSystem.h" />
+    <ClInclude Include="Weather\MediumSystem.h" />
+    <ClInclude Include="Weather\MediumTypes.h" />
+    <ClInclude Include="Weather\WeatherParticleRenderer.h" />
+    <ClInclude Include="Weather\WeatherSystem.h" />
     <ClInclude Include="World.h" />
   </ItemGroup>
   <ItemGroup>

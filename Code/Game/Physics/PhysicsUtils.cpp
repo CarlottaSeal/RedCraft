@@ -95,6 +95,22 @@ Vec3 ApplyFriction(const Vec3& velocity, float friction, float deltaSeconds)
     return result;
 }
 
+Vec3 ApplyFriction3D(const Vec3& velocity, float friction, float deltaSeconds)
+{
+    Vec3 result = velocity;
+    float speed = velocity.GetLength();
+    
+    if (speed > 0.01f)
+    {
+        float drop = speed * friction * deltaSeconds;
+        float newSpeed = fmaxf(speed - drop, 0.0f);
+        float scale = newSpeed / speed;
+        result = result * scale;
+    }
+    
+    return result;
+}
+
 Vec3 Accelerate(const Vec3& velocity, const Vec3& wishDir, float wishSpeed, float accel, float deltaSeconds)
 {
     float currentSpeed = DotProduct3D(velocity, wishDir);

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <queue>
 
+#include "CropSystem.h"
 #include "Engine/Core/Clock.hpp"
 #include "Game/World.h"
 #include "Game/Chunk.h"
@@ -122,34 +123,8 @@ uint8_t RedstoneSimulator::GetInputPower(const BlockIterator& block) const
             continue;
         
         uint8_t neighborType = nb->m_typeIndex;
-        
-        // 红石块恒定输出15
-        if (neighborType == BLOCK_TYPE_REDSTONE_BLOCK)
-        {
-            maxPower = 15;
-            continue;
-        }
-        
-        // 红石火把输出15（不向附着方块输出）
-        if (neighborType == BLOCK_TYPE_REDSTONE_TORCH)
-        {
-            // 火把在我们上方时输出
-            if ((Direction)dir == DIRECTION_UP)
-                maxPower = 15;
-            continue;
-        }
-        
-        // 开启的中继器向前方输出15
-        if (neighborType == BLOCK_TYPE_REPEATER_ON)
-        {
-            Direction facing = (Direction)nb->GetBlockFacing();
-            if ((Direction)dir == GetOppositeDir(facing))
-                maxPower = 15;
-            continue;
-        }
-        
-        // 开启的拉杆输出15
-        if (neighborType == BLOCK_TYPE_LEVER && nb->GetSpecialState())
+        //if (IsBlockProvidingPowerToDirection(neighbor, GetOppositeDir((Direction)dir)))
+        if (IsBlockProvidingPowerToDirection(neighbor, (Direction)dir))
         {
             maxPower = 15;
             continue;
@@ -178,41 +153,24 @@ bool RedstoneSimulator::IsPowered(const BlockIterator& block) const
 
 bool RedstoneSimulator::IsPistonPowered(const BlockIterator& block) const
 {
-    if (!block.IsValid()) return false;
+    if (!block.IsValid())
+        return false;
     
     for (int dir = 0; dir < NUM_DIRECTIONS; dir++)
     {
         BlockIterator neighbor = block.GetNeighborCrossBoundary((Direction)dir);
-        if (!neighbor.IsValid()) continue;
+        if (!neighbor.IsValid())
+            continue;
         
         Block* nb = neighbor.GetBlock();
-        if (!nb) continue;
+        if (!nb)
+            continue;
         
-        uint8_t type = nb->m_typeIndex;
-        
-        if (type == BLOCK_TYPE_REDSTONE_BLOCK)
+        //if (IsBlockProvidingPowerToDirection(neighbor, GetOppositeDir((Direction)dir)))
+        if (IsBlockProvidingPowerToDirection(neighbor, (Direction)dir))
             return true;
         
-        if (type == BLOCK_TYPE_REDSTONE_TORCH && (Direction)dir != DIRECTION_UP)
-            return true;
-        
-        if ((type == BLOCK_TYPE_LEVER || type == BLOCK_TYPE_BUTTON_STONE) 
-            && nb->GetSpecialState())
-            return true;
-        
-        if (type == BLOCK_TYPE_REPEATER_ON)
-        {
-            if (GetOppositeDir((Direction)nb->GetBlockFacing()) == (Direction)dir)
-                return true;
-        }
-        
-        if (type == BLOCK_TYPE_OBSERVER && nb->GetSpecialState())
-        {
-            if (GetOppositeDir(GetObserverOutputDirection(nb)) == (Direction)dir)
-                return true;
-        }
-        
-        if (IsRedstoneWire(type) && nb->GetRedstonePower() > 0)
+        if (IsRedstoneWire(nb->m_typeIndex) && nb->GetRedstonePower() > 0)
             return true;
         
         if (IsStronglyPowered(neighbor))
@@ -220,57 +178,6 @@ bool RedstoneSimulator::IsPistonPowered(const BlockIterator& block) const
     }
     
     return false;
-    // if (!block.IsValid())  return false;
-    // Block* piston = block.GetBlock();
-    // if (!piston || !piston->IsSolid() || !piston->IsOpaque())
-    //     return false;
-    // Direction facing = GetPistonFacing(piston);
-    // // 检查所有方向（除了面向方向，因为那里是活塞头/被推方块）
-    // for (int dir = 0; dir < NUM_DIRECTIONS; dir++)
-    // {
-    //     // 可选：活塞不从前方接收信号（MC行为）
-    //     // if ((Direction)dir == facing)
-    //     //     continue;
-    //     BlockIterator neighbor = block.GetNeighborCrossBoundary((Direction)dir);
-    //     if (!neighbor.IsValid())
-    //         continue;
-    //     Block* nb = neighbor.GetBlock();
-    //     if (!nb)
-    //         continue;
-    //     uint8_t neighborType = nb->m_typeIndex;
-    //     // 直接电源
-    //     if (neighborType == BLOCK_TYPE_REDSTONE_BLOCK)
-    //         return true;
-    //     if (neighborType == BLOCK_TYPE_REDSTONE_TORCH)
-    //     {
-    //         // 火把不向附着方块充能
-    //         if ((Direction)dir != DIRECTION_UP)
-    //             return true;
-    //     }
-    //     if ((neighborType == BLOCK_TYPE_LEVER || 
-    //          neighborType == BLOCK_TYPE_BUTTON_STONE ||
-    //          neighborType == BLOCK_TYPE_BUTTON_WOOD) && 
-    //         nb->GetSpecialState())
-    //     {
-    //         return true;
-    //     }
-    //     if (neighborType == BLOCK_TYPE_REPEATER_ON)
-    //     {
-    //         Direction repFacing = (Direction)nb->GetBlockFacing();
-    //         if (GetOppositeDir(repFacing) == (Direction)dir)
-    //             return true;
-    //     }
-    //     // 红石线（弱充能）
-    //     if (neighborType == BLOCK_TYPE_REDSTONE_WIRE)
-    //     {
-    //         if (nb->GetRedstonePower() > 0)
-    //             return true;
-    //     }
-    //     // 被强充能的方块
-    //     if (IsStronglyPowered(neighbor))
-    //         return true;
-    // }
-    // return false;
 }
 
 void RedstoneSimulator::ProcessBlockUpdate(const BlockIterator& block)
@@ -298,12 +205,12 @@ void RedstoneSimulator::ProcessBlockUpdate(const BlockIterator& block)
     case BLOCK_TYPE_REPEATER_ON:
         UpdateRepeater(block);
         break;
-    case BLOCK_TYPE_REDSTONE_LAMP:
+    case BLOCK_TYPE_REDSTONE_LAMP_OFF:
     case BLOCK_TYPE_REDSTONE_LAMP_ON:
         UpdateLamp(block);
         break;
-    case BLOCK_TYPE_PISTON:
-    case BLOCK_TYPE_STICKY_PISTON:
+    case BLOCK_TYPE_REDSTONE_PISTON:
+    case BLOCK_TYPE_REDSTONE_STICKY_PISTON:
         UpdatePiston(block);
         break;
     case BLOCK_TYPE_BUTTON_STONE:
@@ -340,68 +247,28 @@ void RedstoneSimulator::ProcessObserverUpdates()
 uint8_t RedstoneSimulator::GetDirectPowerInput(const BlockIterator& block) const
 {
     uint8_t maxPower = 0;
+    
     for (int dir = 0; dir < NUM_DIRECTIONS; dir++)
     {
         BlockIterator neighbor = block.GetNeighborCrossBoundary((Direction)dir);
         if (!neighbor.IsValid())
             continue;
+        
         Block* nb = neighbor.GetBlock();
         if (!nb)
             continue;
         
-        uint8_t neighborType = nb->m_typeIndex;
-        // 红石块：恒定15
-        if (neighborType == BLOCK_TYPE_REDSTONE_BLOCK)
+        if (IsBlockProvidingPowerToDirection(neighbor, (Direction)dir))
         {
-            return 15;  // 最大值，直接返回
+            return 15; 
         }
-        // 红石火把：向四周和上方输出15
-        if (neighborType == BLOCK_TYPE_REDSTONE_TORCH)
-        {
-            // 火把不向下方输出（附着方向）
-            if ((Direction)dir != DIRECTION_DOWN)
-            {
-                return 15;
-            }
-        }
-        // 开启的中继器：向前方输出15
-        if (neighborType == BLOCK_TYPE_REPEATER_ON)
-        {
-            Direction repeaterFacing = (Direction)nb->GetBlockFacing();
-            // 如果中继器朝向我们，我们就在它的输出方向
-            if ((Direction)dir == GetOppositeDir(repeaterFacing))
-            {
-                return 15;
-            }
-        }
-        // 开启的拉杆：向所有方向输出15
-        if (neighborType == BLOCK_TYPE_LEVER && nb->GetSpecialState())
-        {
-            return 15;
-        }
-        // 按下的按钮：向所有方向输出15
-        if ((neighborType == BLOCK_TYPE_BUTTON_STONE) && 
-            nb->GetSpecialState())
-        {
-            return 15;
-        }
-        // // 开启的比较器输出
-        // if (neighborType == BLOCK_TYPE_COMPARATOR_ON)
-        // {
-        //     Direction compFacing = (Direction)nb->GetBlockFacing();
-        //     if ((Direction)dir == GetOppositeDir(compFacing))
-        //     {
-        //         uint8_t compPower = nb->GetRedstonePower();
-        //         if (compPower > maxPower)
-        //             maxPower = compPower;
-        //     }
-        // }
-        // 被充能的实心方块（强充能）
+        
         if (IsStronglyPowered(neighbor))
         {
             return 15;
         }
     }
+    
     return maxPower;
 }
 
@@ -420,7 +287,7 @@ uint8_t RedstoneSimulator::GetAdjacentWirePower(const BlockIterator& block) cons
             continue;
         
         Block* nb = neighbor.GetBlock();
-        if (!nb || IsRedstoneWire(nb->m_typeIndex))
+        if (!nb || !IsRedstoneWire(nb->m_typeIndex))
             continue;
         
         uint8_t neighborPower = nb->GetRedstonePower();
@@ -825,7 +692,7 @@ void RedstoneSimulator::UpdateLamp(const BlockIterator& block)
     if (!lamp)
         return;
     uint8_t lampType = lamp->m_typeIndex;
-    if (lampType != BLOCK_TYPE_REDSTONE_LAMP && 
+    if (lampType != BLOCK_TYPE_REDSTONE_LAMP_OFF && 
         lampType != BLOCK_TYPE_REDSTONE_LAMP_ON)
         return;
         
@@ -847,7 +714,7 @@ void RedstoneSimulator::UpdateLamp(const BlockIterator& block)
         // 检查是否真的应该关闭（延迟结束后再次检查）
         if (!IsPowered(block))
         {
-            lamp->m_typeIndex = BLOCK_TYPE_REDSTONE_LAMP;
+            lamp->m_typeIndex = BLOCK_TYPE_REDSTONE_LAMP_OFF;
             MarkChunkDirty(block);
             UpdateLampLighting(block, false);
         }
@@ -924,8 +791,8 @@ void RedstoneSimulator::UpdatePiston(const BlockIterator& block)
     if (!piston)
         return;
     uint8_t pistonType = piston->m_typeIndex;
-    if (pistonType != BLOCK_TYPE_PISTON && 
-        pistonType != BLOCK_TYPE_STICKY_PISTON)
+    if (pistonType != BLOCK_TYPE_REDSTONE_PISTON && 
+        pistonType != BLOCK_TYPE_REDSTONE_STICKY_PISTON)
         return;
     
     bool powered = IsPistonPowered(block);
@@ -1109,44 +976,80 @@ void RedstoneSimulator::ExtendPiston(const BlockIterator& piston)
     
     std::vector<IntVec3> blocksToPush;
     std::vector<IntVec3> blocksToDestroy;
-    
     if (!CalculatePushList(piston, facing, blocksToPush, blocksToDestroy))
         return;
     
+    // 从远到近移动方块
     for (int i = (int)blocksToPush.size() - 1; i >= 0; i--)
     {
         IntVec3 fromPos = blocksToPush[i];
         IntVec3 toPos = fromPos + GetDirectionVector(facing);
         
         Block fromBlock = m_world->GetBlockAtWorldCoords(fromPos.x, fromPos.y, fromPos.z);
-        //m_world->SetBlockType(toPos.x, toPos.y, toPos.z, fromBlock.m_typeIndex);
-        Block toSet = m_world->GetBlockAtWorldCoords(toPos.x, toPos.y, toPos.z);
-        toSet.SetType(fromBlock.m_typeIndex);
         
-        fromBlock.SetType(BLOCK_TYPE_AIR);
+        BlockIterator toIter = m_world->GetBlockIterator(toPos);
+        if (toIter.IsValid())
+        {
+            Block* toBlock = toIter.GetBlock();
+            if (toBlock)
+            {
+                toBlock->SetType(fromBlock.m_typeIndex);
+                toBlock->m_redstoneData = fromBlock.m_redstoneData;
+            }
+        }
+        
+        BlockIterator fromIter = m_world->GetBlockIterator(fromPos);
+        if (fromIter.IsValid())
+        {
+            Block* b = fromIter.GetBlock();
+            if (b)
+            {
+                b->SetType(BLOCK_TYPE_AIR);
+                b->m_redstoneData = 0;
+            }
+            MarkChunkDirty(fromIter);
+        }
     }
     
+    // 处理被破坏的方块（包括作物掉落）
     for (const IntVec3& pos : blocksToDestroy)
     {
-        Block toDestroy = m_world->GetBlockAtWorldCoords(pos.x, pos.y, pos.z);
-        toDestroy.SetType(BLOCK_TYPE_AIR);
+        BlockIterator iter = m_world->GetBlockIterator(pos);
+        if (!iter.IsValid())
+            continue;
+        
+        Block* b = iter.GetBlock();
+        if (!b)
+            continue;
+        
+        uint8_t blockType = b->m_typeIndex;
+        // 如果是作物，触发掉落
+        if (IsCrop(blockType))
+        {
+            std::string droppedItemName = BlockDefinition::GetBlockDef(blockType).m_droppedItemName;
+            ItemType item = StringToItemType(droppedItemName);
+            m_world->m_cropSystem->OnCropDestroyed(pos, item);
+        }
+        // 破坏方块
+        b->SetType(BLOCK_TYPE_AIR);
+        b->m_redstoneData = 0;
+        MarkChunkDirty(iter);
     }
     
-    // uint8_t headType = (pistonBlock->m_typeIndex == BLOCK_TYPE_STICKY_PISTON) 
-    //                     ? BLOCK_TYPE_PISTON_HEAD_STICKY 
-    //                     : BLOCK_TYPE_PISTON_HEAD;
-    //m_world->SetBlockType(headPos.x, headPos.y, headPos.z, headType);
-    Block pistonHead = m_world->GetBlockAtWorldCoords(headPos.x, headPos.y, headPos.z);
-    pistonHead.SetType(BLOCK_TYPE_PISTON_HEAD);
-    
+    // 放置活塞头
     BlockIterator headIter = m_world->GetBlockIterator(headPos);
     if (headIter.IsValid())
     {
         Block* head = headIter.GetBlock();
-        if (head) 
+        if (head)
+        {
+            head->SetType(BLOCK_TYPE_PISTON_HEAD);
             head->SetBlockFacing((uint8_t)facing);
+        }
+        MarkChunkDirty(headIter);
     }
     
+    // 标记活塞为已伸出
     pistonBlock->SetPistonExtended(true);
     MarkChunkDirty(piston);
 }
@@ -1322,7 +1225,7 @@ bool RedstoneSimulator::IsStronglyPowered(const BlockIterator& block) const
             if ((Direction)dir == GetOppositeDir(facing))
                 return true;
         }
-        if (neighborType == BLOCK_TYPE_OBSERVER && nb->GetSpecialState())
+        if (neighborType == BLOCK_TYPE_REDSTONE_OBSERVER && nb->GetSpecialState())
         {
             if ((Direction)dir == GetOppositeDir(GetObserverOutputDirection(nb)))
                 return true;
@@ -1370,7 +1273,7 @@ bool RedstoneSimulator::IsBlockReceivingPower(const BlockIterator& block) const
             return true;
         
         // 开启的拉杆
-        if (neighborType == BLOCK_TYPE_LEVER && nb->GetSpecialState())
+        if (neighborType == BLOCK_TYPE_REDSTONE_LEVER && nb->GetSpecialState())
             return true;
         
         // 按下的按钮
@@ -1424,13 +1327,15 @@ bool RedstoneSimulator::IsDestroyedWhenPushed(uint8_t blockType) const
     {
     case BLOCK_TYPE_REDSTONE_TORCH:
     case BLOCK_TYPE_REDSTONE_TORCH_OFF:
-    case BLOCK_TYPE_LEVER:
+    case BLOCK_TYPE_REDSTONE_LEVER:
     case BLOCK_TYPE_BUTTON_STONE:
     //case BLOCK_TYPE_BUTTON_WOOD:
         return true;
     default:
-        return false;
+        break;
     }
+    if (IsCrop(blockType))
+        return true;
     return false;
 }
 
@@ -1450,8 +1355,8 @@ IntVec3 RedstoneSimulator::GetDirectionVector(Direction dir) const
     {
     case DIRECTION_DOWN:  return IntVec3(0, 0, -1);
     case DIRECTION_UP:    return IntVec3(0, 0, 1);
-    case DIRECTION_NORTH: return IntVec3(0, -1, 0);
-    case DIRECTION_SOUTH: return IntVec3(0, 1, 0);
+    case DIRECTION_NORTH: return IntVec3(0, 1, 0);
+    case DIRECTION_SOUTH: return IntVec3(0, -1, 0);
     case DIRECTION_EAST:  return IntVec3(1, 0, 0);
     case DIRECTION_WEST:  return IntVec3(-1, 0, 0);
     default: return IntVec3(0, 0, 0);
@@ -1730,7 +1635,7 @@ void RedstoneSimulator::TriggerObserver(const BlockIterator& observer)
     if (!observer.IsValid()) return;
     
     Block* b = observer.GetBlock();
-    if (!b || b->m_typeIndex != BLOCK_TYPE_OBSERVER) return;
+    if (!b || b->m_typeIndex != BLOCK_TYPE_REDSTONE_OBSERVER) return;
     
     if (b->GetSpecialState()) return;
     
@@ -1772,7 +1677,7 @@ void RedstoneSimulator::NotifyObserversOfChange(const BlockIterator& changedBloc
         if (!neighbor.IsValid()) continue;
         
         Block* nb = neighbor.GetBlock();
-        if (!nb || nb->m_typeIndex != BLOCK_TYPE_OBSERVER) continue;
+        if (!nb || nb->m_typeIndex != BLOCK_TYPE_REDSTONE_OBSERVER) continue;
         
         Direction observerFacing = GetObserverFacing(nb);
         if (GetOppositeDir(observerFacing) == (Direction)dir)
@@ -1861,7 +1766,7 @@ void RedstoneSimulator::UpdateObserver(const BlockIterator& block)
     if (!block.IsValid()) return;
     
     Block* observer = block.GetBlock();
-    if (!observer || observer->m_typeIndex != BLOCK_TYPE_OBSERVER) return;
+    if (!observer || observer->m_typeIndex != BLOCK_TYPE_REDSTONE_OBSERVER) return;
     
     if (observer->GetSpecialState())
     {
@@ -2035,7 +1940,7 @@ void RedstoneSimulator::ToggleLever(const BlockIterator& block)
     if (!block.IsValid())
         return;
     Block* lever = block.GetBlock();
-    if (!lever || lever->m_typeIndex != BLOCK_TYPE_LEVER)
+    if (!lever || lever->m_typeIndex != BLOCK_TYPE_REDSTONE_LEVER)
         return;
     
     //切换状态
@@ -2286,13 +2191,13 @@ bool RedstoneSimulator::CanConnectToRedstone(const BlockIterator& block, Directi
     case BLOCK_TYPE_REDSTONE_BLOCK:
     case BLOCK_TYPE_REDSTONE_TORCH:
     case BLOCK_TYPE_REDSTONE_TORCH_OFF:
-    case BLOCK_TYPE_LEVER:
+    case BLOCK_TYPE_REDSTONE_LEVER:
     case BLOCK_TYPE_BUTTON_STONE:
     //case BLOCK_TYPE_BUTTON_WOOD:
-    case BLOCK_TYPE_REDSTONE_LAMP:
+    case BLOCK_TYPE_REDSTONE_LAMP_OFF:
     case BLOCK_TYPE_REDSTONE_LAMP_ON:
-    case BLOCK_TYPE_PISTON:
-    case BLOCK_TYPE_STICKY_PISTON:
+    case BLOCK_TYPE_REDSTONE_PISTON:
+    case BLOCK_TYPE_REDSTONE_STICKY_PISTON:
         return true;
     
         // 中继器：只在输入/输出方向连接
@@ -2307,7 +2212,7 @@ bool RedstoneSimulator::CanConnectToRedstone(const BlockIterator& block, Directi
         }
     
         //侦测器：只在输出方向连接
-    case BLOCK_TYPE_OBSERVER:
+    case BLOCK_TYPE_REDSTONE_OBSERVER:
         {
             Direction observerFacing = GetObserverFacing(b);
             Direction outputDir = GetOppositeDir(observerFacing);
@@ -2439,5 +2344,57 @@ void RedstoneSimulator::MarkChunkDirty(const BlockIterator& block)
     {
         chunk->MarkSelfDirty();
         m_world->m_hasDirtyChunk = true;
+    }
+}
+
+bool RedstoneSimulator::IsBlockProvidingPowerToDirection(
+    const BlockIterator& source, 
+    Direction toDir) const 
+{
+    if (!source.IsValid())
+        return false;
+    
+    Block* b = source.GetBlock();
+    if (!b)
+        return false;
+    
+    uint8_t type = b->m_typeIndex;
+    
+    switch (type)
+    {
+    case BLOCK_TYPE_REDSTONE_BLOCK:
+        return true;
+        // 2. 红石火把：向除附着方向外的所有方向输出15
+    case BLOCK_TYPE_REDSTONE_TORCH:
+        {
+            Direction attachDir = GetTorchAttachmentDirection(b);
+            return toDir != attachDir;
+        }
+        // 3. 拉杆：开启时向所有方向输出15
+    case BLOCK_TYPE_REDSTONE_LEVER:
+        return b->GetSpecialState();
+        
+        // 4. 按钮：按下时向所有方向输出15
+    case BLOCK_TYPE_BUTTON_STONE:
+        return b->GetSpecialState();
+        // 5. 中继器：只向前方输出15
+    case BLOCK_TYPE_REPEATER_ON:
+        {
+            Direction facing = (Direction)b->GetBlockFacing();
+            return GetOppositeDir(toDir) == facing;
+            //return toDir == facing;
+        }
+        // 6. 侦测器：只向背面输出15
+    case BLOCK_TYPE_REDSTONE_OBSERVER:
+        {
+            if (!b->GetSpecialState())
+                return false;  
+            Direction facing = GetObserverFacing(b);
+            Direction outputDir = GetOppositeDir(facing);
+            return toDir == outputDir;
+        }
+        
+    default:
+        return false;
     }
 }

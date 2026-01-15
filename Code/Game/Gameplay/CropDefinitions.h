@@ -60,14 +60,12 @@ public:
     CropDefinition& SetCustomGrowth(std::function<void(const BlockIterator&, World*, const CropDefinition&)> func);
     CropDefinition& SetCustomHarvest(std::function<void(const BlockIterator&, World*, const CropDefinition&)> func);
 
-    // 查询
     bool IsBlockTypeInDefinition(uint8_t blockType) const;
     int GetStageIndex(uint8_t blockType) const;
     bool IsMature(uint8_t blockType) const;
     bool IsHarvestable(uint8_t blockType) const;
     float GetGrowthProgress(uint8_t blockType) const;
 
-    // 静态注册表
     static void InitializeAllDefinitions();
     static const CropDefinition* GetDefinition(uint8_t blockType);
     static const CropDefinition* GetDefinitionByName(const std::string& name);
@@ -83,9 +81,6 @@ private:
     static void RegisterDefinition(const CropDefinition& def);
 };
 
-// ============================================================================
-// 条件构建器
-// ============================================================================
 namespace CropConditions
 {
     GrowthRequirement NeedLight(uint8_t minLevel);

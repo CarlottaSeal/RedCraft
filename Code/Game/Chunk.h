@@ -93,8 +93,9 @@ public:
     ChunkState GetState() const { return m_state.load(); }
     void SetState(ChunkState newState) { m_state.store(newState); }
 
+    void PrepareSortedIndices(const Vec3& cameraPos);
     void RenderOpaque() const;   
-    void RenderTransparent() const;
+    void RenderTransparent(const Vec3& cameraPos) const;
 
 public:
     ChunkGenData m_chunkGenData;
@@ -111,6 +112,9 @@ protected:
     IntVec3 GetNeighborBlockCoords(const IntVec3& localCoords, Direction dir);
     void UpdateVBOIBO();
     bool AreAllNeighborsActive() const;
+    void RefillWaterAboveUnderwaterPlants();
+
+    void RenderTransparentPreSorted(const Vec3& cameraPos) const;
 
     //Rgba8 GetRedstoneWireTint(Block* block);
     bool NeedsSpecialRenderingAsRedstoneComp(uint8_t blockType);
@@ -155,6 +159,13 @@ protected:
     
     bool m_isDirty = true;
 
+    std::vector<Vec3> m_transparentFaceCenters;                      // 每个透明面片的中心位置
+    mutable std::vector<unsigned int> m_sortedTransparentIndices;  // 排序后的索引
+    mutable IndexBuffer* m_sortedTransparentIndexBuffer = nullptr; // 排序后的索引缓冲
+    mutable Vec3 m_lastSortCameraPos = Vec3();
+    mutable bool m_sortedIndicesValid = false;
+    mutable std::mutex m_sortMutex; 
+    
     VertexBuffer* m_vertexBufferDebug = nullptr;
     IndexBuffer* m_indexBufferDebug = nullptr;
     std::vector<Vertex_PCU> m_verticesDebug;

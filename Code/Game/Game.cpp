@@ -21,8 +21,10 @@
 #include "ChunkUtils.h"
 #include "World.h"
 #include "Engine/UI/UIManager.h"
+#include "Gameplay/WorldConfig.h"
 #include "ThirdParty/ImGui/imgui.h"
 #include "UI/GameUIManager.h"
+#include "UI/HUD.h"
 
 RandomNumberGenerator* g_theRNG = nullptr;
 //extern AudioSystem* g_theAudio;
@@ -53,23 +55,22 @@ Game::Game()
 
 	g_theRNG = new RandomNumberGenerator();
 
-	m_gameUIManager = new GameUIManager(g_theUISystem);
-	g_theEventSystem->SubscribeEventCallBackFunction("ResumeGame", Event_ResumeGame);
-	g_theEventSystem->SubscribeEventCallBackFunction("OpenSettings", Event_OpenSettings);
-	g_theEventSystem->SubscribeEventCallBackFunction("SaveGame", Event_SaveGame);
-	g_theEventSystem->SubscribeEventCallBackFunction("BackToMainMenu", Event_BackToMainMenu);
+	// g_theEventSystem->SubscribeEventCallBackFunction("ResumeGame", Event_ResumeGame);
+	// g_theEventSystem->SubscribeEventCallBackFunction("OpenSettings", Event_OpenSettings);
+	// g_theEventSystem->SubscribeEventCallBackFunction("SaveGame", Event_SaveGame);
+	// g_theEventSystem->SubscribeEventCallBackFunction("BackToMainMenu", Event_BackToMainMenu);
 }
 
 Game::~Game()
 {
 	if (m_currentWorld)
 	{
-		m_currentWorld->SaveAllModifiedChunks();
+		m_currentWorld->SaveAllChunks();
 		m_currentWorld->ForceDeactivateAllChunks();
 	}
 
-	delete m_gameUIManager;
-	m_gameUIManager = nullptr;
+	delete g_theGameUIManager;
+	g_theGameUIManager = nullptr;
 	delete m_player;
 	m_player = nullptr;
 	delete m_spriteSheet;
@@ -81,23 +82,56 @@ Game::~Game()
 void Game::Startup()
 {
 	World* oldWorld = m_currentWorld;
-
-	Texture* blockTex = g_theRenderer->CreateOrGetTextureFromFile("Data/Images/CustomSheet.png", true);
-	m_spriteSheet = new SpriteSheet(*blockTex, IntVec2(16,16));
-
+	Player* oldPlayer = m_player;
+	if (!m_spriteSheet)
+	{
+		Texture* blockTex = g_theRenderer->CreateOrGetTextureFromFile("Data/Images/CustomSheet.png", true);
+		m_spriteSheet = new SpriteSheet(*blockTex, IntVec2(16,16));
+	}
 	BlockDefinition::InitializeBlockDefs();
 
-	m_currentWorld = new World(this);
+	if (!g_theGameUIManager)
+	{
+		g_theGameUIManager = new GameUIManager(g_theUISystem);
+		g_theGameUIManager->Startup();
+	}
+	World* newWorld = new World(this);
+	if (m_selectedWorldType == WorldGenPipeline::WorldGenMode::FLAT_FARM)
+	{
+		auto config = WorldConfigManager::CreateDefaultFarmWorld();
+		WorldConfigManager::ApplyConfig(newWorld->m_worldGenPipeline, config);
+		newWorld->m_worldGenPipeline->SetWorldGenMode(WorldGenPipeline::WorldGenMode::FLAT_FARM);
+	}
+	else
+	{
+		newWorld->m_worldGenPipeline->SetWorldGenMode(WorldGenPipeline::WorldGenMode::NORMAL);
+	}
+	m_currentWorld = newWorld;
+	Vec3 spawnPos = (m_selectedWorldType == WorldGenPipeline::WorldGenMode::NORMAL) ? 
+		Vec3(0.0f, 0.0f, 80.0f) : Vec3(0.0f, 0.0f, 80.0f);
+	m_player = new Player(this, spawnPos);
+	m_player->m_worldCamera.SetCameraMode(Camera::CameraMode::eMode_Perspective);
+	m_player->m_worldCamera.SetPerspectiveView(2.f, 60.f, 0.1f, 3000.f);
+	Mat44 mat;
+	mat.SetIJK3D(Vec3(0.f, 0.f,1.f), Vec3(-1.f, 0.f, 0.f), Vec3(0.f, 1.f, 0.f));
+	m_player->m_worldCamera.SetCameraToRenderTransform(mat);
 
-	if (oldWorld)                     
-		m_worldsToDelete.push_back(oldWorld);
+if (oldWorld)
+	m_worldsToDelete.push_back(oldWorld);
+if (oldPlayer)
+	delete oldPlayer;
+	
+	if (g_theGameUIManager && g_theGameUIManager->GetHUD())
+	{
+		g_theGameUIManager->GetHUD()->RefreshHotbarDisplay();
+	}
 }
 
 void Game::ForceShutdownCurrentWorld()
 {
 }
 
-void Game::Update()
+void Game::Update(float deltaSeconds)
 {
 	if (g_theApp->WasKeyJustPressed(KEYCODE_ESC)
 		|| g_theInput->GetController(0).WasButtonJustPressed(XboxButtonID::X))
@@ -120,6 +154,9 @@ void Game::Update()
 
 	AdjustForPauseAndTimeDistortion();
 
+	if (g_theGameUIManager)
+		g_theGameUIManager->Update(deltaSeconds);
+
 	if (m_isInAttractMode)
 	{
 		AttractModeUpdate();
@@ -131,12 +168,10 @@ void Game::Update()
 			m_hasPlayedAttractSound = true;
 		}
 	}
-
 	if (!m_isInAttractMode)
 	{
-		GameStateUpdate();
+		GameStateUpdate(deltaSeconds);
 	}
-
 	CleanupOldWorlds();
 
 	if (!g_theGame)
@@ -165,11 +200,11 @@ void Game::Render() const
 		return;
 	if (m_isInAttractMode)
 	{
-		g_theRenderer->ClearScreen();
+		g_theRenderer->ClearScreen(Rgba8::CYAN);
 		g_theRenderer->BeginCamera(m_screenCamera);
 		g_theRenderer->BindTexture(nullptr);
 		g_theRenderer->SetBlendMode(BlendMode::ALPHA);
-		g_theRenderer->SetRasterizerMode(RasterizerMode::SOLID_CULL_NONE);
+		g_theRenderer->SetRasterizerMode(RasterizerMode::SOLID_CULL_BACK);
 		AttractStateRender();
 		g_theRenderer->EndCamera(m_screenCamera);
 	}
@@ -178,14 +213,15 @@ void Game::Render() const
 	{
 		//g_theRenderer->ClearScreen(Rgba8(0, 0, 0));
 		g_theRenderer->ClearScreen(m_currentWorld->m_skyColor);
-		g_theRenderer->BeginCamera(((Player*)m_player)->m_worldCamera);
+		g_theRenderer->BeginCamera(m_player->m_worldCamera);
 
 		GameStateRender();
 
 		DebugRenderWorld(((Player*)m_player)->m_worldCamera);
 		DebugRenderScreen(m_screenCamera);
 	}
-
+if (g_theGameUIManager)
+	g_theGameUIManager->Render();
 	g_theDevConsole->Render(AABB2(m_screenCamera.GetOrthographicBottomLeft(), m_screenCamera.GetOrthographicTopRight()), g_theRenderer);
 }
 
@@ -249,12 +285,16 @@ void Game::CleanupOldWorlds()
 
 void Game::AttractModeUpdate()
 {
-	if (g_theApp->IsKeyDown(' ') ||
-		g_theApp->IsKeyDown('N') ||
-		g_theInput->GetController(0).WasButtonJustPressed(XboxButtonID::START))
-		//||g_theInput->GetController(0).WasButtonJustPressed(XboxButtonID::A))
+	// if (g_theApp->WasKeyJustPressed(' ') ||
+	// 	g_theApp->WasKeyJustPressed('N') ||
+	// 	g_theInput->GetController(0).WasButtonJustPressed(XboxButtonID::START))
+	// 	//||g_theInput->GetController(0).WasButtonJustPressed(XboxButtonID::A))
+	// {
+	// 	m_isInAttractMode = false;
+	// }
+	if (g_theGameUIManager && !g_theGameUIManager->IsWorldSelectOpen())
 	{
-		m_isInAttractMode = false;
+		g_theGameUIManager->OpenWorldSelect();
 	}
 }
 
@@ -263,7 +303,7 @@ void Game::AttractStateRender() const
 	DebugDrawRing(m_screenCamera.GetOrthographicCenter(), 100.f, 10.f + sinf(m_varyTime) * 10.f, Rgba8::YELLOW);
 }
 
-void Game::GameStateUpdate()
+void Game::GameStateUpdate(float deltaSeconds)
 {
 	//XboxController const& controller = g_theInput->GetController(0);
 
@@ -271,7 +311,7 @@ void Game::GameStateUpdate()
 		m_player->Update((float)s_theSystemClock->GetDeltaSeconds());
 	if(m_currentWorld)
 		m_currentWorld->Update((float)s_theSystemClock->GetDeltaSeconds());
-
+	
 	if (g_theApp->WasKeyJustPressed(KEYCODE_F2))
 	{
 		m_currentWorld->ToggleDebugMode();
@@ -283,6 +323,11 @@ void Game::GameStateUpdate()
 	DebugRenderSystemInputUpdate();
 
 	ImGuiUpdate();
+
+	if (g_theApp->WasKeyJustPressed(KEYCODE_F9))
+	{
+		DebugTestSaveSystemPaths();
+	}
 }
 
 void Game::GameStateRender() const
@@ -292,6 +337,8 @@ void Game::GameStateRender() const
 	g_theRenderer->BindTexture(nullptr);
 	m_player->Render();
 	GameAxisDebugRender();
+	if (g_theGameUIManager)
+		g_theGameUIManager->Render();
 }
 
 void Game::GameAxisDebugRender() const
@@ -511,29 +558,23 @@ void Game::ImGuiDrawCurveEditor(const char* label, std::vector<Vec2>& points)
 	ImGui::Spacing();
 	ImGui::Text("Preview");
 
-	// 获取绘图区域
 	ImVec2 canvas_pos = ImGui::GetCursorScreenPos();
 	ImVec2 canvas_size = ImVec2(ImGui::GetContentRegionAvail().x, 150);
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
-	// 绘制背景
 	draw_list->AddRectFilled(canvas_pos, 
 		ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), 
 		IM_COL32(40, 40, 40, 255));
 	
-	// 绘制曲线点和连线
 	if (points.size() > 0)
 	{
 		for (int i = 0; i < points.size(); i++)
 		{
-			// 将曲线坐标转换为屏幕坐标
 			float x = canvas_pos.x + (points[i].x - g_curveXMin) / (g_curveXMax - g_curveXMin) * canvas_size.x;
 			float y = canvas_pos.y + canvas_size.y - (points[i].y - g_curveYMin) / (g_curveYMax - g_curveYMin) * canvas_size.y;
         
-			// 绘制点
 			draw_list->AddCircleFilled(ImVec2(x, y), 4, IM_COL32(100, 150, 255, 255));
         
-			// 绘制连线
 			if (i > 0)
 			{
 				float prev_x = canvas_pos.x + (points[i-1].x - g_curveXMin) / (g_curveXMax - g_curveXMin) * canvas_size.x;
@@ -543,7 +584,7 @@ void Game::ImGuiDrawCurveEditor(const char* label, std::vector<Vec2>& points)
 		}
 	}
 
-	ImGui::Dummy(canvas_size); // 占位
+	ImGui::Dummy(canvas_size); 
 	ImGui::Spacing();
     
     if (ImGui::Button("Save Points"))
@@ -566,6 +607,7 @@ void Game::PrintGameControlToDevConsole()
 	g_theDevConsole->AddLine(Rgba8::CYAN, "ESC   - Exit game");
 	g_theDevConsole->AddLine(Rgba8::CYAN, "F2    - Toggle Debug");
 	g_theDevConsole->AddLine(Rgba8::CYAN, "F8    - Reload");
+	g_theDevConsole->AddLine(Rgba8::CYAN, "L/K/J/H - Clear/Rain/ThunderStorm/Snow");
 }
 
 void Game::DebugRenderSystemInputUpdate()
@@ -578,64 +620,30 @@ void Game::DebugRenderSystemInputUpdate()
 	//Add fps...
 	float timeTotal = (float)m_gameClock->GetTotalSeconds();
 	float fps = (float)m_gameClock->GetFrameRate();
+	if (fps > m_maxFPS)
+	{
+		m_maxFPS = fps;
+	}
 	//float timeScale = m_gameClock->GetTimeScale();
 	// std::string timeReportHUD = " Time: " + RoundToTwoDecimalsString(timeTotal) 
 	// + " FPS: " + RoundToOneDecimalString(fps) + " Scale: " + RoundToTwoDecimalsString(timeScale);
-	std::string timeReportHUD = "Time: " + RoundToTwoDecimalsString(timeTotal) + " FPS: " + RoundToOneDecimalString(fps);
+	std::string timeReportHUD = "Time: " + RoundToTwoDecimalsString(timeTotal) + " FPS: " + RoundToOneDecimalString(fps)
+		+ " MaxFPS: " + RoundToOneDecimalString(m_maxFPS);
 	float textWidth = GetTextWidth(12.f, timeReportHUD, 0.7f);
-	DebugAddScreenText(timeReportHUD, m_screenCamera.GetOrthographicTopRight() - Vec2(textWidth + 1.f, 15.f), 12.f, Vec2::ZERO, 0.f);
+	DebugAddScreenText(timeReportHUD, m_screenCamera.GetOrthographicTopRight() - Vec2(textWidth + 1.f, 15.f), 12.f,
+	                   Vec2::ZERO, 0.f);
 
-	std::string typeMsg = "[LMB] Dig [RMB] Add " + BlockDefinition::GetBlockDef(m_currentWorld->m_typeToPlace).m_name
-			+ " [1] Glowstone [2]CobbleStone [3]ChiseledBrick";
-	DebugAddScreenText(
-		typeMsg,
-		Vec2(m_screenCamera.GetOrthographicBottomLeft().x, m_screenCamera.GetOrthographicTopRight().y) -
-		Vec2(0.f, 15.f), 12.f, Vec2::ZERO, 0.f);
+	// std::string typeMsg = "[LMB] Dig [RMB] Add " + BlockDefinition::GetBlockDef(m_currentWorld->m_typeToPlace).m_name
+	// 	  + " [1] Glowstone [2]CobbleStone [3]ChiseledBrick";
+	// DebugAddScreenText(
+	//    typeMsg,
+	//    Vec2(m_screenCamera.GetOrthographicBottomLeft().x, m_screenCamera.GetOrthographicTopRight().y) -
+	//    Vec2(0.f, 15.f), 12.f, Vec2::ZERO, 0.f);
 	std::string modeMsg = m_player->m_playerModeString + " " + m_player->m_gameCamera->m_cameraModeString;
 	DebugAddScreenText(
-		modeMsg,
-		Vec2(m_screenCamera.GetOrthographicBottomLeft().x, m_screenCamera.GetOrthographicTopRight().y) -
-		Vec2(0.f, 30.f), 12.f, Vec2::ZERO, 0.f);
-
-	if (m_currentWorld->IsDebuggingPrinting())
-	{
-		// std::string worldSection = "World\n";
-		// worldSection += "\n";
-		// worldSection += Stringf("chunksPendingGeneration: %d\n", (int)m_currentWorld->m_processingChunks.size());
-		// worldSection += "\n";
-		// worldSection += Stringf("chunksGenerating: %d\n", (int)m_currentWorld->m_generatingChunksCount);
-		// worldSection += "\n";
-		// worldSection += Stringf("chunks: %d\n", (int)m_currentWorld->m_activeChunks.size());
-		// worldSection += "\n";
-		// std::string jobSection = "JobSystem\n";
-		// worldSection += "\n";
-		// jobSection += Stringf("Pending Jobs: %d\n", g_theJobSystem->GetPendingJobCount());
-		// worldSection += "\n";
-		// jobSection += Stringf("Executing Jobs: %d\n", g_theJobSystem->GetExecutingJobCount());
-		// worldSection += "\n";
-		// jobSection += Stringf("Completed Jobs: %d\n", g_theJobSystem->GetCompletedJobCount());
-		//
-		// worldSection += jobSection;
-		// DebugAddScreenText(
-		// worldSection, m_screenCamera.GetOrthographicBottomLeft()+Vec2(0.f, 8.f * 15.f), 12.f, Vec2::ZERO, 0.f);
-	}
-
-	// if (g_theApp->WasKeyJustPressed('0'))
-	// {
-	// 	Chunk* chunk = m_currentWorld->GetChunkFromPlayerCameraPosition(m_player->m_position);
-	// 	if (!chunk) return;
-	// 	IntVec3 globalCoords(
-	// 		static_cast<int>(std::floor(m_player->m_position.x)),
-	// 		static_cast<int>(std::floor(m_player->m_position.y)),
-	// 		static_cast<int>(std::floor(m_player->m_position.z))
-	// 	);
-	//
-	// 	IntVec3 localCoords = GlobalCoordsToLocalCoords(globalCoords);
-	// 	std::string biomeType = std::to_string(chunk->m_chunkGenData.m_biomes[localCoords.x][localCoords.y]);
-	// 	float c = chunk->m_chunkGenData.m_biomeParams[localCoords.x][localCoords.y].m_continentalness;
-	// 	DebugAddMessage(" Biome Type at Player: " + biomeType + "Continentalness: " + std::to_string(c),
-	// 		2.f, m_screenCamera);
-	// }
+	   modeMsg,
+	   Vec2(m_screenCamera.GetOrthographicBottomLeft().x, m_screenCamera.GetOrthographicTopRight().y) -
+	   Vec2(0.f, 15.f), 12.f, Vec2::ZERO, 0.f);
 }
 
 void Game::DebugAddWorldAxisText(Mat44 worldMat)
@@ -656,31 +664,94 @@ void Game::DebugAddWorldAxisText(Mat44 worldMat)
 	DebugAddWorldText("z-Up", zMat, 0.2f, Vec2(-0.3f, 1.5f), -1.f, Rgba8::AQUA);
 }
 
-bool Event_ResumeGame(EventArgs& args)
+void Game::DebugTestSaveSystemPaths()
 {
-	UNUSED(args);
-	g_theGame->m_gameUIManager->ClosePauseMenu();
-	return true;
+    DebuggerPrintf("\n========================================\n");
+    DebuggerPrintf("TESTING SAVE SYSTEM PATHS\n");
+    DebuggerPrintf("========================================\n\n");
+    
+    if (!g_theSaveSystem)
+    {
+        DebuggerPrintf("ERROR: g_theSaveSystem is NULL!\n");
+        return;
+    }
+    
+    // 测试 1: 简单路径
+    DebuggerPrintf("--- Test 1: Simple path ---\n");
+    g_theSaveSystem->PushSaveContext("Saves");
+    DebuggerPrintf("Current directory: '%s'\n", g_theSaveSystem->GetCurrentSaveDirectory().c_str());
+    g_theSaveSystem->PopSaveContext();
+    DebuggerPrintf("\n");
+    
+    // 测试 2: 嵌套路径
+    DebuggerPrintf("--- Test 2: Nested path ---\n");
+    g_theSaveSystem->PushSaveContext("Saves/Normal");
+    DebuggerPrintf("Current directory: '%s'\n", g_theSaveSystem->GetCurrentSaveDirectory().c_str());
+    g_theSaveSystem->PopSaveContext();
+    DebuggerPrintf("\n");
+    
+    // 测试 3: 带名称的路径
+    DebuggerPrintf("--- Test 3: Path with world name ---\n");
+    g_theSaveSystem->PushSaveContext("Saves/Farmland/MyFarm");
+    DebuggerPrintf("Current directory: '%s'\n", g_theSaveSystem->GetCurrentSaveDirectory().c_str());
+    g_theSaveSystem->PopSaveContext();
+    DebuggerPrintf("\n");
+    
+    // 测试 4: 如果有 World，测试 GetSaveSubdirectory
+    if (g_theGame && g_theGame->m_currentWorld)
+    {
+        DebuggerPrintf("--- Test 4: World path ---\n");
+        World* world = g_theGame->m_currentWorld;
+        
+        DebuggerPrintf("World m_worldGenMode: %d\n", (int)g_theGame->m_selectedWorldType);
+        DebuggerPrintf("World m_worldName: '%s'\n", world->m_worldName.c_str());
+        
+        std::string worldPath = world->GetSaveSubdirectory();
+        DebuggerPrintf("World::GetSaveSubdirectory() returns: '%s'\n", worldPath.c_str());
+        
+        // 测试实际创建
+        DebuggerPrintf("Attempting to create world directory...\n");
+        g_theSaveSystem->PushSaveContext(worldPath);
+        DebuggerPrintf("SUCCESS!\n");
+        g_theSaveSystem->PopSaveContext();
+        DebuggerPrintf("\n");
+    }
+    else
+    {
+        DebuggerPrintf("--- Test 4: World not available ---\n\n");
+    }
+    
+    DebuggerPrintf("========================================\n");
+    DebuggerPrintf("ALL TESTS COMPLETE\n");
+    DebuggerPrintf("========================================\n\n");
 }
 
-bool Event_OpenSettings(EventArgs& args)
-{
-	UNUSED(args);
-	g_theGame->m_gameUIManager->OpenSettings();
-	return true;
-}
+// bool Event_ResumeGame(EventArgs& args)
+// {
+// 	UNUSED(args);
+// 	g_theGame->m_gameUIManager->ClosePauseMenu();
+// 	return true;
+// }
+//
+// bool Event_OpenSettings(EventArgs& args)
+// {
+// 	UNUSED(args);
+// 	g_theGame->m_gameUIManager->OpenSettings();
+// 	return true;
+// }
+//
+// bool Event_SaveGame(EventArgs& args)
+// {
+// 	UNUSED(args);
+// 	g_theGame->m_gameUIManager->ShowActionMessage("Game Saved!", 2.0f);
+// 	return true;
+// }
+//
+// bool Event_BackToMainMenu(EventArgs& args)
+// {
+// 	UNUSED(args);
+// 	g_theGame->m_gameUIManager->CloseAllScreens();
+// 	g_theGame->m_gameUIManager->OpenMainMenu();
+// 	return true;
+// }
 
-bool Event_SaveGame(EventArgs& args)
-{
-	UNUSED(args);
-	g_theGame->m_gameUIManager->ShowActionMessage("Game Saved!", 2.0f);
-	return true;
-}
-
-bool Event_BackToMainMenu(EventArgs& args)
-{
-	UNUSED(args);
-	g_theGame->m_gameUIManager->CloseAllScreens();
-	g_theGame->m_gameUIManager->OpenMainMenu();
-	return true;
-}

@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "Engine/Math/IntVec3.h"
+#include "Game/Gamecommon.hpp"
+#include "Game/Generator/FeaturePlacer.h"
 
 class CropDefinition;
 class World;
@@ -50,19 +52,29 @@ struct GrowthStage
     // std::vector<ItemDrop> m_drops;
 };
 
-// 掉落物定义
 struct CropDrop
 {
-    uint8_t m_itemType = 0;
+    //uint8_t m_itemType = 0;
+    ItemType m_itemType;
+    std::string m_itemName = "";
     int m_minCount = 1;
     int m_maxCount = 1;
     float m_chance = 1.0f;
     bool m_onlyWhenMature = true;
 
     CropDrop() = default;
-    CropDrop(uint8_t type, int minC, int maxC, float chance = 1.0f, bool matureOnly = true)
+    CropDrop(std::string name, int minC, int maxC, float chance = 1.0f, bool matureOnly = true)
+        : m_itemName(name), m_minCount(minC), m_maxCount(maxC)
+        , m_chance(chance), m_onlyWhenMature(matureOnly)
+    {
+        m_itemType = StringToItemType(name.c_str());
+    }
+    CropDrop(ItemType type, int minC, int maxC, float chance = 1.0f, bool matureOnly = true)
         : m_itemType(type), m_minCount(minC), m_maxCount(maxC)
-        , m_chance(chance), m_onlyWhenMature(matureOnly) {}
+        , m_chance(chance), m_onlyWhenMature(matureOnly)
+    {
+        m_itemName = ItemTypeToString(type);
+    }
 
     int RollCount() const;
 };
@@ -80,7 +92,7 @@ struct CropStage
     CropStage(uint8_t type, bool mature = false, bool harvestable = false, float height = 1.0f)
         : m_blockType(type), m_isMature(mature), m_isHarvestable(harvestable), m_visualHeight(height) {}
 
-    CropStage& AddDrop(uint8_t type, int minC, int maxC, float chance = 1.0f);
+    CropStage& AddDrop(BlockType type, int minC, int maxC, float chance = 1.0f);
 };
 
 // 生长模式

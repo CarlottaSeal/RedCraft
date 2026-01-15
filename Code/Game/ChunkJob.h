@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "Engine/Job/JobSystem.h"
+#include "Engine/Math/Vec3.hpp"
 
 class Chunk;
 
@@ -41,4 +42,14 @@ public:
     virtual void OnComplete() override;
 public:
     //Chunk* m_chunk;
+};
+
+class ChunkSortTransparencyJob : public ChunkJob
+{
+public:
+    ChunkSortTransparencyJob(Chunk* chunk, const Vec3& cameraPos);
+    virtual void Execute() override;
+    virtual void OnComplete() override;
+private:
+    Vec3 m_cameraPos;
 };

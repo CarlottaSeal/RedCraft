@@ -20,7 +20,7 @@ void FeaturePlacer::InitializeTreeStamps()
     oakSmall.m_logType = BLOCK_TYPE_OAK_LOG;
     oakSmall.m_leafType = BLOCK_TYPE_OAK_LEAVES;
     oakSmall.m_logPositions = MakeColumn(4);
-    oakSmall.m_leafPositions = MakeBlobLeaves(IntVec3(0,0,3), 2);  // 2格半径
+    oakSmall.m_leafPositions = MakeBlobLeaves(IntVec3(0,0,3), 2); 
     m_oakVariants.push_back(oakSmall);
     
     TreeStamp oakMedium;
@@ -439,4 +439,272 @@ FeaturePlacer::TreeStamp FeaturePlacer::GetTreeStamp(BiomeGenerator::BiomeType b
         return it->second[0];
     }
     return TreeStamp();
+}
+
+bool FeaturePlacer::ShouldPlaceUnderwaterPlant(int worldX, int worldY, BiomeGenerator::BiomeType biome)
+{
+    UNUSED(worldX);
+    UNUSED(worldY);
+    
+    float plantDensity = 0.0f;
+    
+    switch (biome) 
+    {
+        case BiomeGenerator::BIOME_OCEAN:        plantDensity = 0.03f; break;  // 普通海洋 - 中等密度
+        case BiomeGenerator::BIOME_DEEP_OCEAN:   plantDensity = 0.02f; break;  // 深海 - 较少
+        case BiomeGenerator::BIOME_FROZEN_OCEAN: plantDensity = 0.01f; break;  // 冰冻海洋 - 稀少
+        default: return false;
+    }
+    
+    return m_rng.RollRandomFloatZeroToOne() < plantDensity;
+}
+
+void FeaturePlacer::PlaceUnderwaterPlants(Chunk* chunk, int localX, int localY, int seabedZ, 
+                                           BiomeGenerator::BiomeType biome, float temperature)
+{
+    if (seabedZ < 0 || seabedZ >= CHUNK_SIZE_Z - 1)
+        return;
+    
+    int idx = LocalCoordsToIndex(localX, localY, seabedZ);
+    uint8_t surfaceBlock = chunk->m_blocks[idx].m_typeIndex;
+    
+    if (surfaceBlock != BLOCK_TYPE_SAND && 
+        surfaceBlock != BLOCK_TYPE_DIRT && 
+        surfaceBlock != BLOCK_TYPE_STONE)
+        return;
+    
+    int idxAbove = LocalCoordsToIndex(localX, localY, seabedZ + 1);
+    uint8_t blockAbove = chunk->m_blocks[idxAbove].m_typeIndex;
+    
+    if (blockAbove != BLOCK_TYPE_WATER)
+    {
+        return;  
+    }
+    
+    int waterDepth = 0;
+    for (int z = seabedZ + 1; z < CHUNK_SIZE_Z; z++)
+    {
+        int waterIdx = LocalCoordsToIndex(localX, localY, z);
+        if (chunk->m_blocks[waterIdx].m_typeIndex == BLOCK_TYPE_WATER)
+            waterDepth++;
+        else
+            break;
+    }
+    if (waterDepth < 2)
+        return;
+    
+    float rand = m_rng.RollRandomFloatZeroToOne();
+    
+    if (biome == BiomeGenerator::BIOME_FROZEN_OCEAN)
+    {
+        if (rand < 0.50f)
+        {
+            PlaceSeagrass(chunk, localX, localY, seabedZ + 1);
+        }
+    }
+    else if (biome == BiomeGenerator::BIOME_DEEP_OCEAN)
+    {
+        if (rand < 0.40f && waterDepth >= 4)
+        {
+            PlaceKelp(chunk, localX, localY, seabedZ + 1, waterDepth);
+        }
+        else if (rand < 0.60f)
+        {
+            PlaceSeagrass(chunk, localX, localY, seabedZ + 1);
+        }
+    }
+    else if (biome == BiomeGenerator::BIOME_OCEAN)
+    {
+        if (temperature > 0.5f)  
+        {
+            if (rand < 0.10f && waterDepth >= 3 && waterDepth <= 8)
+            {
+                PlaceCoralBlock(chunk, localX, localY, seabedZ + 1);
+            }
+            else if (rand < 0.30f && waterDepth >= 4)
+            {
+                PlaceKelp(chunk, localX, localY, seabedZ + 1, waterDepth);
+            }
+            else if (rand < 0.50f && waterDepth >= 3)
+            {
+                PlaceTallSeagrass(chunk, localX, localY, seabedZ + 1);
+            }
+            else if (rand < 0.80f)
+            {
+                PlaceSeagrass(chunk, localX, localY, seabedZ + 1);
+            }
+        }
+        else 
+        {
+            if (rand < 0.25f && waterDepth >= 4)
+            {
+                PlaceKelp(chunk, localX, localY, seabedZ + 1, waterDepth);
+            }
+            else if (rand < 0.45f && waterDepth >= 3)
+            {
+                PlaceTallSeagrass(chunk, localX, localY, seabedZ + 1);
+            }
+            else if (rand < 0.70f)
+            {
+                PlaceSeagrass(chunk, localX, localY, seabedZ + 1);
+            }
+        }
+    }
+}
+
+void FeaturePlacer::PlaceSeagrass(Chunk* chunk, int x, int y, int z)
+{
+    if (x < 0 || x >= CHUNK_SIZE_X || y < 0 || y >= CHUNK_SIZE_Y || 
+        z < 0 || z >= CHUNK_SIZE_Z - 1)
+        return;
+    
+    int idx = LocalCoordsToIndex(x, y, z);
+    if (chunk->m_blocks[idx].m_typeIndex != BLOCK_TYPE_WATER)
+        return;
+    
+    // 确保上方也是水（不要放在水面边缘）
+    int idxAbove = LocalCoordsToIndex(x, y, z + 1);
+    if (chunk->m_blocks[idxAbove].m_typeIndex != BLOCK_TYPE_WATER)
+        return;
+    
+    chunk->m_blocks[idx].SetType(BLOCK_TYPE_SEAGRASS);
+}
+
+void FeaturePlacer::PlaceTallSeagrass(Chunk* chunk, int x, int y, int z)
+{
+    if (x < 0 || x >= CHUNK_SIZE_X || y < 0 || y >= CHUNK_SIZE_Y || 
+        z < 0 || z >= CHUNK_SIZE_Z - 2)
+        return;
+    
+    int idxBottom = LocalCoordsToIndex(x, y, z);
+    int idxTop = LocalCoordsToIndex(x, y, z + 1);
+    
+    if (chunk->m_blocks[idxBottom].m_typeIndex != BLOCK_TYPE_WATER ||
+        chunk->m_blocks[idxTop].m_typeIndex != BLOCK_TYPE_WATER)
+        return;
+    
+    // 确保顶部上方也是水（不要放在水面边缘）
+    if (z + 2 < CHUNK_SIZE_Z)
+    {
+        int idxAbove = LocalCoordsToIndex(x, y, z + 2);
+        if (chunk->m_blocks[idxAbove].m_typeIndex != BLOCK_TYPE_WATER)
+        {
+            // 上方不是水，改放普通海草
+            PlaceSeagrass(chunk, x, y, z);
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+    
+    chunk->m_blocks[idxBottom].SetType(BLOCK_TYPE_TALL_SEAGRASS_BOTTOM);
+    chunk->m_blocks[idxTop].SetType(BLOCK_TYPE_TALL_SEAGRASS_TOP);
+}
+
+void FeaturePlacer::PlaceKelp(Chunk* chunk, int x, int y, int z, int waterDepth)
+{
+    if (x < 0 || x >= CHUNK_SIZE_X || y < 0 || y >= CHUNK_SIZE_Y || 
+        z < 0 || z >= CHUNK_SIZE_Z)
+        return;
+    
+    // 确保顶部至少有 2 格水覆盖（-3 而不是 -2）
+    int maxHeight = waterDepth - 3;
+    if (maxHeight < 1)
+        return;
+    
+    int kelpHeight = m_rng.RollRandomIntInRange(2, 8);
+    if (kelpHeight > maxHeight)
+        kelpHeight = maxHeight;
+    
+    for (int i = 0; i < kelpHeight && (z + i) < CHUNK_SIZE_Z; i++)
+    {
+        int idx = LocalCoordsToIndex(x, y, z + i);
+        
+        // 确保当前位置是水
+        if (chunk->m_blocks[idx].m_typeIndex != BLOCK_TYPE_WATER)
+            break;
+        
+        // 检查上方是否有水（不要长到水面边缘）
+        if (z + i + 1 < CHUNK_SIZE_Z)
+        {
+            int idxAbove = LocalCoordsToIndex(x, y, z + i + 1);
+            if (chunk->m_blocks[idxAbove].m_typeIndex != BLOCK_TYPE_WATER)
+            {
+                // 上方不是水，停止生长（不放这一格）
+                break;
+            }
+        }
+        
+        if (i == kelpHeight - 1)
+        {
+            chunk->m_blocks[idx].SetType(BLOCK_TYPE_KELP_TOP);
+        }
+        else
+        {
+            chunk->m_blocks[idx].SetType(BLOCK_TYPE_KELP);
+        }
+    }
+}
+
+void FeaturePlacer::PlaceCoralBlock(Chunk* chunk, int x, int y, int z)
+{
+    if (x < 0 || x >= CHUNK_SIZE_X || y < 0 || y >= CHUNK_SIZE_Y || 
+        z < 0 || z >= CHUNK_SIZE_Z - 1)
+        return;
+    
+    int idx = LocalCoordsToIndex(x, y, z);
+    if (chunk->m_blocks[idx].m_typeIndex != BLOCK_TYPE_WATER)
+        return;
+    
+    // 确保上方也是水（不要放在水面边缘）
+    int idxAbove = LocalCoordsToIndex(x, y, z + 1);
+    if (chunk->m_blocks[idxAbove].m_typeIndex != BLOCK_TYPE_WATER)
+        return;
+    
+    float rand = m_rng.RollRandomFloatZeroToOne();
+    BlockType coralType;
+    
+    if (rand < 0.25f)
+        coralType = BLOCK_TYPE_CORAL_BLOCK_RED;
+    else if (rand < 0.5f)
+        coralType = BLOCK_TYPE_CORAL_BLOCK_PURPLE;
+    else if (rand < 0.75f)
+        coralType = BLOCK_TYPE_CORAL_BLOCK_YELLOW;
+    else
+        coralType = BLOCK_TYPE_CORAL_BLOCK_FAN_DEAD;
+    
+    chunk->m_blocks[idx].SetType(coralType);
+    
+    // 扩展珊瑚
+    if (m_rng.RollRandomFloatZeroToOne() < 0.3f)
+    {
+        int directions[4][2] = {{1,0}, {-1,0}, {0,1}, {0,-1}};
+        for (int i = 0; i < 4; i++)
+        {
+            if (m_rng.RollRandomFloatZeroToOne() < 0.4f)
+            {
+                int nx = x + directions[i][0];
+                int ny = y + directions[i][1];
+                
+                if (nx >= 0 && nx < CHUNK_SIZE_X && ny >= 0 && ny < CHUNK_SIZE_Y)
+                {
+                    int nIdx = LocalCoordsToIndex(nx, ny, z);
+                    if (chunk->m_blocks[nIdx].m_typeIndex == BLOCK_TYPE_WATER)
+                    {
+                        // 确保扩展位置上方也是水
+                        if (z + 1 < CHUNK_SIZE_Z)
+                        {
+                            int nIdxAbove = LocalCoordsToIndex(nx, ny, z + 1);
+                            if (chunk->m_blocks[nIdxAbove].m_typeIndex == BLOCK_TYPE_WATER)
+                            {
+                                chunk->m_blocks[nIdx].SetType(coralType);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

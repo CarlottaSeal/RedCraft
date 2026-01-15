@@ -112,8 +112,15 @@ void Entity::UpdateFlyingPhysics(float deltaSeconds)
 {
 	// No gravity in flying mode
 	
-	// Apply friction (similar to air friction)
-	m_velocity = ApplyFriction(m_velocity, m_airFriction, deltaSeconds);
+	// Apply strong 3D friction to stop quickly when no input
+	m_velocity = ApplyFriction3D(m_velocity, 20.0f, deltaSeconds); // 强力摩擦，快速停止
+	
+	// Stop completely if speed is very low to avoid drift
+	float speed = m_velocity.GetLength();
+	if (speed < 0.1f)
+	{
+		m_velocity = Vec3();
+	}
 	
 	// Apply velocity and resolve collisions
 	ResolveWorldCollisions(deltaSeconds);
@@ -123,9 +130,19 @@ void Entity::UpdateFlyingPhysics(float deltaSeconds)
 
 void Entity::UpdateNoClipPhysics(float deltaSeconds)
 {
-	// No gravity, no friction, no collisions
+	// No gravity, no collisions
 	
-	// Just apply velocity directly
+	// Apply strong 3D friction to stop immediately when no input
+	m_velocity = ApplyFriction3D(m_velocity, 20.0f, deltaSeconds);
+	
+	// Stop completely if speed is very low
+	float speed = m_velocity.GetLength();
+	if (speed < 0.1f)
+	{
+		m_velocity = Vec3();
+	}
+	
+	// Just apply velocity directly (no collisions)
 	m_position += m_velocity * deltaSeconds;
 	
 	m_isOnGround = false;

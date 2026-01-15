@@ -4,9 +4,10 @@
 #include "Engine/UI/Text.h"
 #include "Engine/UI/Button.h"
 #include "Engine/Core/EngineCommon.hpp"
-
+#include "Game/Game.hpp"
+extern Game* g_theGame;
 CraftingScreen::CraftingScreen(UISystem* uiSystem)
-    : UIScreen(uiSystem, UIScreenType::CRAFTING_TABLE, true)
+    : UIScreen(uiSystem, UIScreenType::CRAFTING_TABLE, g_theGame->m_screenCamera, true)
 {
 }
 
@@ -20,8 +21,9 @@ void CraftingScreen::Build()
     {
         return;
     }
-    
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildCraftingGrid();
@@ -41,7 +43,6 @@ void CraftingScreen::BuildBackground()
         false,
         Rgba8::BLACK
     );
-    m_elements.push_back(m_backgroundDimmer);
     
     AABB2 craftingPanelBounds(300, 150, 1300, 750);
     m_craftingPanel = new Panel(
@@ -52,7 +53,6 @@ void CraftingScreen::BuildBackground()
         true,
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_craftingPanel);
     
     TextSetting titleSetting;
     titleSetting.m_text = "Crafting Table";
@@ -61,7 +61,6 @@ void CraftingScreen::BuildBackground()
     
     Vec2 titlePos(350, 710);
     m_titleText = new Text(m_canvas, titlePos, titleSetting);
-    m_elements.push_back(m_titleText);
 }
 
 void CraftingScreen::BuildCraftingGrid()
@@ -84,7 +83,6 @@ void CraftingScreen::BuildCraftingGrid()
             
             ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
             m_craftingSlots.push_back(slot);
-            m_elements.push_back(slot);
         }
     }
 }
@@ -99,7 +97,6 @@ void CraftingScreen::BuildResultSlot()
     
     m_resultSlot = new ItemSlot(m_canvas, resultBounds, 0);
     m_resultSlot->SetDisabled(true);  // 结果槽不能直接放入物品
-    m_elements.push_back(m_resultSlot);
     
     // 箭头图标（可选）
     TextSetting arrowSetting;
@@ -109,21 +106,17 @@ void CraftingScreen::BuildResultSlot()
     
     Vec2 arrowPos(760, 560);
     Text* arrow = new Text(m_canvas, arrowPos, arrowSetting);
-    m_elements.push_back(arrow);
     
     // Craft 按钮
     AABB2 craftButtonBounds(850, 480, 920, 530);
     m_craftButton = new Button(
-        nullptr,
+        m_canvas,
         craftButtonBounds,
         Rgba8(100, 200, 100),
         Rgba8::WHITE,
-        "CraftItem",
-        "Craft",
-        Vec2(0.5f, 0.5f)
+        Rgba8::WHITE,
+        "CraftItem"
     );
-    m_canvas->AddElementToCanvas(m_craftButton);
-    m_elements.push_back(m_craftButton);
 }
 
 void CraftingScreen::BuildPlayerGrid()
@@ -146,7 +139,6 @@ void CraftingScreen::BuildPlayerGrid()
             
             ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
             m_playerSlots.push_back(slot);
-            m_elements.push_back(slot);
         }
     }
     
@@ -163,7 +155,6 @@ void CraftingScreen::BuildPlayerGrid()
         
         ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
         m_playerSlots.push_back(slot);
-        m_elements.push_back(slot);
     }
 }
 

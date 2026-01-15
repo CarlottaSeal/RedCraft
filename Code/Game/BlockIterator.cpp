@@ -139,7 +139,6 @@ BlockIterator BlockIterator::GetNeighborCrossBoundary(Direction dir) const
 {
    if (!m_chunk)
         return BlockIterator(); 
-    
     switch (dir)
     {
     case DIRECTION_EAST:  
@@ -158,7 +157,7 @@ BlockIterator BlockIterator::GetNeighborCrossBoundary(Direction dir) const
         }
         
     case DIRECTION_WEST: 
-        if ((m_blockIndex & CHUNK_MASK_X) == 0)  // ← 直接检查
+        if ((m_blockIndex & CHUNK_MASK_X) == 0)  
         {
             Chunk* westChunk = m_chunk->GetNeighbor(DIRECTION_WEST);
             if (!westChunk)
@@ -173,7 +172,7 @@ BlockIterator BlockIterator::GetNeighborCrossBoundary(Direction dir) const
         }
         
     case DIRECTION_NORTH:  
-        if (((m_blockIndex & CHUNK_MASK_Y) >> CHUNK_BITS_X) == CHUNK_MAX_Y)  // ← 直接检查
+        if (((m_blockIndex & CHUNK_MASK_Y) >> CHUNK_BITS_X) == CHUNK_MAX_Y) 
         {
             Chunk* northChunk = m_chunk->GetNeighbor(DIRECTION_NORTH);
             if (!northChunk)
@@ -188,7 +187,7 @@ BlockIterator BlockIterator::GetNeighborCrossBoundary(Direction dir) const
         }
         
     case DIRECTION_SOUTH:  
-        if (((m_blockIndex & CHUNK_MASK_Y) >> CHUNK_BITS_X) == 0)  // ← 直接检查
+        if (((m_blockIndex & CHUNK_MASK_Y) >> CHUNK_BITS_X) == 0) 
         {
             Chunk* southChunk = m_chunk->GetNeighbor(DIRECTION_SOUTH);
             if (!southChunk)
@@ -203,7 +202,7 @@ BlockIterator BlockIterator::GetNeighborCrossBoundary(Direction dir) const
         }
         
     case DIRECTION_UP: 
-        if (((m_blockIndex & CHUNK_MASK_Z) >> CHUNK_BITS_XY) == CHUNK_MAX_Z)  // ← 直接检查
+        if (((m_blockIndex & CHUNK_MASK_Z) >> CHUNK_BITS_XY) == CHUNK_MAX_Z)  
         {
             return BlockIterator();
         }
@@ -213,7 +212,7 @@ BlockIterator BlockIterator::GetNeighborCrossBoundary(Direction dir) const
         }
         
     case DIRECTION_DOWN: 
-        if (((m_blockIndex & CHUNK_MASK_Z) >> CHUNK_BITS_XY) == 0)  // ← 直接检查
+        if (((m_blockIndex & CHUNK_MASK_Z) >> CHUNK_BITS_XY) == 0)  
         {
             return BlockIterator();
         }

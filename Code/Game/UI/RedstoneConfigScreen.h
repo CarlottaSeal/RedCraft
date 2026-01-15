@@ -20,7 +20,6 @@ class Checkbox;
 class Sprite;
 class World;
 
-// 红石组件配置数据
 struct RedstoneComponentConfig
 {
     IntVec3 m_worldPos;
@@ -45,6 +44,7 @@ public:
     
     virtual void Build() override;
     virtual void Update(float deltaSeconds) override;
+    virtual void Render() const override;
     virtual void OnEnter() override;
     virtual void OnExit() override;
     
@@ -61,13 +61,11 @@ private:
     Text* m_positionText = nullptr;
     Sprite* m_blockIcon = nullptr;
     
-    // 方向配置
     Panel* m_directionPanel = nullptr;
     Text* m_directionLabel = nullptr;
-    std::vector<Button*> m_directionButtons;  // 6个方向按钮
+    std::vector<Button*> m_directionButtons; 
     Direction m_selectedDirection = DIRECTION_NORTH;
     
-    // 中继器配置
     Panel* m_repeaterPanel = nullptr;
     Text* m_delayLabel = nullptr;
     Slider* m_delaySlider = nullptr;
@@ -75,28 +73,29 @@ private:
     Checkbox* m_lockedCheckbox = nullptr;
     Text* m_lockedLabel = nullptr;
     
-    // // 比较器配置
     // Panel* m_comparatorPanel = nullptr;
     // Button* m_compareModeButton = nullptr;
     // Button* m_subtractModeButton = nullptr;
     // Text* m_modeLabel = nullptr;
     
-    // 侦测器配置
     Panel* m_observerPanel = nullptr;
     Text* m_watchDirLabel = nullptr;
     Text* m_observerInfoText = nullptr;
+    Text* m_observerDirectionLabel;
+    Text* m_observerDirectionText;
+    Text* m_observerStatusText;
     
-    // 活塞配置
     Panel* m_pistonPanel = nullptr;
     Text* m_pistonTypeLabel = nullptr;
     Text* m_pistonStateText = nullptr;
+    Text* m_pistonTypeText = nullptr;
+    Text* m_pistonExtendedText = nullptr;
     Button* m_testExtendButton = nullptr;
+    Button* m_pistonTestButton = nullptr;
     
-    // 通用按钮
     Button* m_applyButton = nullptr;
     Button* m_cancelButton = nullptr;
     
-    // 构建方法
     void BuildBackground();
     void BuildHeader();
     void BuildDirectionSelector();
@@ -106,15 +105,12 @@ private:
     void BuildPistonConfig();
     void BuildButtons();
     
-    // 显示/隐藏特定配置面板
     void ShowConfigPanelForBlockType(uint8_t blockType);
     void HideAllConfigPanels();
     
-    // 数据加载/保存
     void LoadCurrentConfig();
     void ApplyConfig();
     
-    // 事件处理
     void OnDirectionSelected(Direction dir);
     void OnDelayChanged(float value);
     void OnLockedChanged(bool locked);

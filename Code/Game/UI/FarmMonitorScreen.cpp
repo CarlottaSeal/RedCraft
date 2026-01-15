@@ -10,10 +10,12 @@
 #include "Game/Chunk.h"
 #include "Game/Block.h"
 #include "Game/BlockDefinition.h"
+#include "Game/Game.hpp"
 #include "Game/Gameplay/CropSystem.h"
-
+#include "Game/Gameplay/CropDropManager.h"
+extern Game* g_theGame;
 FarmMonitorScreen::FarmMonitorScreen(UISystem* uiSystem, World* world)
-    : UIScreen(uiSystem, UIScreenType::CUSTOM, true)
+    : UIScreen(uiSystem, UIScreenType::CUSTOM, g_theGame->m_screenCamera, true)
     , m_world(world)
 {
 }
@@ -28,8 +30,9 @@ void FarmMonitorScreen::Build()
     {
         return;
     }
-    
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildCropsSection();
@@ -40,8 +43,10 @@ void FarmMonitorScreen::Build()
 
 void FarmMonitorScreen::BuildBackground()
 {
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
     // 全屏半透明遮罩
-    AABB2 screenBounds(0, 0, 1600, 900);
+    AABB2 screenBounds(0, 0, size.x, size.y);
     m_backgroundDimmer = new Panel(
         m_canvas,
         screenBounds,
@@ -50,10 +55,14 @@ void FarmMonitorScreen::BuildBackground()
         false,
         Rgba8::BLACK
     );
-    m_elements.push_back(m_backgroundDimmer);
     
-    // 主面板
-    AABB2 mainBounds(200, 80, 1400, 820);
+    // 主面板 - 占屏幕中心75%宽度，82%高度
+    float panelWidth = size.x * 0.75f;
+    float panelHeight = size.y * 0.82f;
+    float panelX = size.x * 0.125f;
+    float panelY = size.y * 0.09f;
+    
+    AABB2 mainBounds(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
     m_mainPanel = new Panel(
         m_canvas,
         mainBounds,
@@ -62,33 +71,45 @@ void FarmMonitorScreen::BuildBackground()
         true,
         Rgba8(80, 120, 80)
     );
-    m_elements.push_back(m_mainPanel);
     
     // 标题
     TextSetting titleSetting;
     titleSetting.m_text = "Farm Monitor";
     titleSetting.m_color = Rgba8(200, 255, 200);
-    titleSetting.m_height = 42.0f;
+    titleSetting.m_height = size.y * 0.047f;
     
-    Vec2 titlePos(250, 770);
+    Vec2 titlePos(panelX + size.x * 0.03f, panelY + panelHeight - size.y * 0.055f);
     m_titleText = new Text(m_canvas, titlePos, titleSetting);
-    m_elements.push_back(m_titleText);
     
     // 副标题（区域信息）
     TextSetting subtitleSetting;
     subtitleSetting.m_text = "Automatic Farm Control System";
     subtitleSetting.m_color = Rgba8(150, 200, 150);
-    subtitleSetting.m_height = 20.0f;
+    subtitleSetting.m_height = size.y * 0.022f;
     
-    Vec2 subtitlePos(250, 740);
+    Vec2 subtitlePos(panelX + size.x * 0.03f, panelY + panelHeight - size.y * 0.088f);
     Text* subtitle = new Text(m_canvas, subtitlePos, subtitleSetting);
-    m_elements.push_back(subtitle);
 }
 
 void FarmMonitorScreen::BuildCropsSection()
 {
-    // 作物区域面板
-    AABB2 cropsPanelBounds(220, 380, 900, 720);
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    
+    // 计算主面板位置
+    float panelWidth = size.x * 0.75f;
+    float panelHeight = size.y * 0.82f;
+    float panelX = size.x * 0.125f;
+    float panelY = size.y * 0.09f;
+    
+    // 作物区域面板 - 左侧，占主面板的57%宽度，46%高度
+    float cropsPanelWidth = panelWidth * 0.57f;
+    float cropsPanelHeight = panelHeight * 0.46f;
+    float cropsPanelX = panelX + size.x * 0.0125f;
+    float cropsPanelY = panelY + panelHeight * 0.405f;
+    
+    AABB2 cropsPanelBounds(cropsPanelX, cropsPanelY, 
+                           cropsPanelX + cropsPanelWidth, 
+                           cropsPanelY + cropsPanelHeight);
     m_cropsPanel = new Panel(
         m_canvas,
         cropsPanelBounds,
@@ -97,24 +118,30 @@ void FarmMonitorScreen::BuildCropsSection()
         true,
         Rgba8(60, 90, 60)
     );
-    m_elements.push_back(m_cropsPanel);
     
     // 作物区域标题
     TextSetting sectionTitleSetting;
     sectionTitleSetting.m_text = "Crop Status";
     sectionTitleSetting.m_color = Rgba8(180, 220, 180);
-    sectionTitleSetting.m_height = 26.0f;
+    sectionTitleSetting.m_height = size.y * 0.029f;
     
-    Vec2 cropsTitlePos(240, 690);
+    Vec2 cropsTitlePos(cropsPanelX + size.x * 0.0125f, 
+                       cropsPanelY + cropsPanelHeight - size.y * 0.033f);
     m_cropsSectionTitle = new Text(m_canvas, cropsTitlePos, sectionTitleSetting);
-    m_elements.push_back(m_cropsSectionTitle);
-    
+
     // 创建作物槽位 (4x3 = 12个)
-    float slotWidth = 150.0f;
-    float slotHeight = 90.0f;
-    float paddingX = 12.0f;
-    float paddingY = 10.0f;
-    Vec2 gridStart(240, 650);
+    float slotWidthRatio = 0.094f;
+    float slotHeightRatio = 0.1f;
+    float paddingXRatio = 0.0075f;
+    float paddingYRatio = 0.011f;
+    
+    float slotWidth = size.x * slotWidthRatio;
+    float slotHeight = size.y * slotHeightRatio;
+    float paddingX = size.x * paddingXRatio;
+    float paddingY = size.y * paddingYRatio;
+    
+    Vec2 gridStart(cropsPanelX + size.x * 0.0125f, 
+                   cropsPanelY + cropsPanelHeight - size.y * 0.056f);
     
     for (int row = 0; row < 3; row++)
     {
@@ -137,39 +164,48 @@ void FarmMonitorScreen::BuildCropsSection()
                 Rgba8(50, 70, 50)
             );
             m_cropSlotPanels.push_back(slotPanel);
-            m_elements.push_back(slotPanel);
             
-            // 作物图标 (左侧)
-            AABB2 iconBounds(x + 5, y - slotHeight + 25, x + 55, y - 5);
+            // 作物图标 (左侧) - 占槽位宽度33%，高度65%
+            float iconSize = slotWidth * 0.33f;
+            float iconPadding = slotWidth * 0.033f;
+            float iconTopPadding = slotHeight * 0.28f;
+            
+            AABB2 iconBounds(x + iconPadding, 
+                           y - slotHeight + iconTopPadding, 
+                           x + iconPadding + iconSize, 
+                           y - iconPadding);
             Sprite* icon = new Sprite(m_canvas, iconBounds, nullptr);
             icon->SetEnabled(false);
             m_cropIcons.push_back(icon);
-            m_elements.push_back(icon);
             
             // 作物名称 (右侧上方)
             TextSetting nameSetting;
             nameSetting.m_text = "---";
             nameSetting.m_color = Rgba8(200, 200, 200);
-            nameSetting.m_height = 16.0f;
+            nameSetting.m_height = slotHeight * 0.178f;
             
-            Vec2 namePos(x + 60, y - 15);
+            Vec2 namePos(x + slotWidth * 0.4f, y - slotHeight * 0.167f);
             Text* nameText = new Text(m_canvas, namePos, nameSetting);
             m_cropNameTexts.push_back(nameText);
-            m_elements.push_back(nameText);
             
             // 生长阶段文本 (右侧中间)
             TextSetting stageSetting;
             stageSetting.m_text = "Stage: -/-";
             stageSetting.m_color = Rgba8(150, 150, 150);
-            stageSetting.m_height = 14.0f;
+            stageSetting.m_height = slotHeight * 0.156f;
             
-            Vec2 stagePos(x + 60, y - 35);
+            Vec2 stagePos(x + slotWidth * 0.4f, y - slotHeight * 0.389f);
             Text* stageText = new Text(m_canvas, stagePos, stageSetting);
             m_cropStageTexts.push_back(stageText);
-            m_elements.push_back(stageText);
             
             // 进度条 (底部)
-            AABB2 progressBounds(x + 5, y - slotHeight + 5, x + slotWidth - 5, y - slotHeight + 18);
+            float progressBarPadding = slotWidth * 0.033f;
+            float progressBarHeight = slotHeight * 0.144f;
+            
+            AABB2 progressBounds(x + progressBarPadding, 
+                               y - slotHeight + progressBarPadding, 
+                               x + slotWidth - progressBarPadding, 
+                               y - slotHeight + progressBarPadding + progressBarHeight);
             ProgressBar* progressBar = new ProgressBar(
                 m_canvas,
                 progressBounds,
@@ -181,7 +217,6 @@ void FarmMonitorScreen::BuildCropsSection()
             );
             progressBar->SetValue(0.0f);
             m_cropProgressBars.push_back(progressBar);
-            m_elements.push_back(progressBar);
         }
     }
 }
@@ -198,7 +233,6 @@ void FarmMonitorScreen::BuildObserversSection()
         true,
         Rgba8(90, 60, 60)
     );
-    m_elements.push_back(m_observersPanel);
     
     // 侦测器区域标题
     TextSetting sectionTitleSetting;
@@ -208,7 +242,6 @@ void FarmMonitorScreen::BuildObserversSection()
     
     Vec2 observersTitlePos(940, 690);
     m_observersSectionTitle = new Text(m_canvas, observersTitlePos, sectionTitleSetting);
-    m_elements.push_back(m_observersSectionTitle);
     
     // 创建侦测器槽位 (4个)
     float slotWidth = 200.0f;
@@ -233,7 +266,6 @@ void FarmMonitorScreen::BuildObserversSection()
             Rgba8(70, 50, 50)
         );
         m_observerSlotPanels.push_back(slotPanel);
-        m_elements.push_back(slotPanel);
         
         // 触发指示灯 (左侧圆形)
         AABB2 indicatorBounds(x + 10, y - slotHeight + 15, x + 40, y - 15);
@@ -246,7 +278,6 @@ void FarmMonitorScreen::BuildObserversSection()
             Rgba8(100, 50, 50)
         );
         m_observerIndicators.push_back(indicator);
-        m_elements.push_back(indicator);
         
         // 位置文本
         TextSetting posSetting;
@@ -257,7 +288,6 @@ void FarmMonitorScreen::BuildObserversSection()
         Vec2 posTextPos(x + 50, y - 20);
         Text* posText = new Text(m_canvas, posTextPos, posSetting);
         m_observerPosTexts.push_back(posText);
-        m_elements.push_back(posText);
         
         // 状态文本
         TextSetting statusSetting;
@@ -268,7 +298,6 @@ void FarmMonitorScreen::BuildObserversSection()
         Vec2 statusTextPos(x + 50, y - 42);
         Text* statusText = new Text(m_canvas, statusTextPos, statusSetting);
         m_observerStatusTexts.push_back(statusText);
-        m_elements.push_back(statusText);
     }
     
     // 添加侦测器说明
@@ -279,7 +308,6 @@ void FarmMonitorScreen::BuildObserversSection()
     
     Vec2 helpPos(940, 395);
     Text* helpText = new Text(m_canvas, helpPos, helpSetting);
-    m_elements.push_back(helpText);
 }
 
 void FarmMonitorScreen::BuildStatsSection()
@@ -294,8 +322,7 @@ void FarmMonitorScreen::BuildStatsSection()
         true,
         Rgba8(70, 70, 90)
     );
-    m_elements.push_back(m_statsPanel);
-    
+
     // 统计标题
     TextSetting statsTitleSetting;
     statsTitleSetting.m_text = "Farm Statistics";
@@ -304,7 +331,6 @@ void FarmMonitorScreen::BuildStatsSection()
     
     Vec2 statsTitlePos(240, 330);
     Text* statsTitle = new Text(m_canvas, statsTitlePos, statsTitleSetting);
-    m_elements.push_back(statsTitle);
     
     // 统计信息
     TextSetting statSetting;
@@ -315,26 +341,32 @@ void FarmMonitorScreen::BuildStatsSection()
     statSetting.m_text = "Total Crops: 0";
     Vec2 totalPos(260, 290);
     m_totalCropsText = new Text(m_canvas, totalPos, statSetting);
-    m_elements.push_back(m_totalCropsText);
     
     // 成熟作物数
     statSetting.m_text = "Mature Crops: 0";
     Vec2 maturePos(260, 260);
     m_matureCropsText = new Text(m_canvas, maturePos, statSetting);
-    m_elements.push_back(m_matureCropsText);
     
     // 侦测器数量
     statSetting.m_text = "Active Observers: 0";
     Vec2 observerPos(260, 230);
     m_observerCountText = new Text(m_canvas, observerPos, statSetting);
-    m_elements.push_back(m_observerCountText);
     
     // 平均生长进度
     statSetting.m_text = "Average Growth: 0%";
     Vec2 avgPos(260, 200);
     m_avgGrowthText = new Text(m_canvas, avgPos, statSetting);
-    m_elements.push_back(m_avgGrowthText);
+
+    // 掉落物统计
+    statSetting.m_text = "Pending Drops: 0";
+    Vec2 dropsPos(500, 290);
+    m_dropsCountText = new Text(m_canvas, dropsPos, statSetting);
     
+    // 物品总数
+    statSetting.m_text = "Total Items: 0";
+    Vec2 itemsPos(500, 260);
+    m_dropsItemsText = new Text(m_canvas, itemsPos, statSetting);
+
     // 进度可视化 - 大进度条
     AABB2 bigProgressBounds(260, 120, 700, 160);
     ProgressBar* bigProgress = new ProgressBar(
@@ -347,7 +379,6 @@ void FarmMonitorScreen::BuildStatsSection()
         true
     );
     bigProgress->SetValue(0.0f);
-    m_elements.push_back(bigProgress);
     
     // 进度标签
     TextSetting progressLabelSetting;
@@ -357,7 +388,6 @@ void FarmMonitorScreen::BuildStatsSection()
     
     Vec2 progressLabelPos(260, 170);
     Text* progressLabel = new Text(m_canvas, progressLabelPos, progressLabelSetting);
-    m_elements.push_back(progressLabel);
 }
 
 void FarmMonitorScreen::BuildButtons()
@@ -371,46 +401,40 @@ void FarmMonitorScreen::BuildButtons()
     // 刷新按钮
     AABB2 refreshBounds(startX, startY, startX + buttonWidth, startY + buttonHeight);
     m_refreshButton = new Button(
-        nullptr,
+        m_canvas,
         refreshBounds,
         Rgba8(80, 150, 80),
+        Rgba8::GREY,
         Rgba8::WHITE,
-        "FarmRefresh",
         "Refresh Data",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_refreshButton);
-    m_elements.push_back(m_refreshButton);
     
     // 一键收获按钮
     startY -= (buttonHeight + spacing);
     AABB2 harvestBounds(startX, startY, startX + buttonWidth, startY + buttonHeight);
     m_harvestAllButton = new Button(
-        nullptr,
+        m_canvas,
         harvestBounds,
         Rgba8(200, 180, 80),
+        Rgba8::GREY,
         Rgba8::WHITE,
-        "FarmHarvestAll",
         "Harvest All Mature",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_harvestAllButton);
-    m_elements.push_back(m_harvestAllButton);
     
     // 关闭按钮
     startY -= (buttonHeight + spacing);
     AABB2 closeBounds(startX, startY, startX + buttonWidth, startY + buttonHeight);
     m_closeButton = new Button(
-        nullptr,
+        m_canvas,
         closeBounds,
         Rgba8(180, 80, 80),
+        Rgba8::GREY,
         Rgba8::WHITE,
-        "FarmClose",
         "Close",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_closeButton);
-    m_elements.push_back(m_closeButton);
     
     // 区域设置提示
     TextSetting tipSetting;
@@ -420,7 +444,6 @@ void FarmMonitorScreen::BuildButtons()
     
     Vec2 tipPos(940, 115);
     Text* tipText = new Text(m_canvas, tipPos, tipSetting);
-    m_elements.push_back(tipText);
 }
 
 void FarmMonitorScreen::Update(float deltaSeconds)
@@ -538,7 +561,7 @@ void FarmMonitorScreen::CollectObserverData()
             {
                 Block block = m_world->GetBlockAtWorldCoords(x, y, z);
                 
-                if (block.m_typeIndex == BLOCK_TYPE_OBSERVER)
+                if (block.m_typeIndex == BLOCK_TYPE_REDSTONE_OBSERVER)
                 {
                     ObserverMonitorData data;
                     data.m_worldPos = IntVec3(x, y, z);
@@ -688,6 +711,31 @@ void FarmMonitorScreen::UpdateStatsDisplay()
     {
         int avgPercent = (int)(avgProgress * 100.0f);
         m_avgGrowthText->SetText("Average Growth: " + std::to_string(avgPercent) + "%");
+    }
+
+    if (m_world && m_world->m_cropSystem)
+    {
+        DropStatistics dropStats = m_world->m_cropSystem->GetCropDropManager()->GetStatistics();
+        
+        if (m_dropsCountText)
+        {
+            m_dropsCountText->SetText("Pending Drops: " + std::to_string(dropStats.m_totalDrops));
+        }
+        
+        if (m_dropsItemsText)
+        {
+            m_dropsItemsText->SetText("Total Items: " + std::to_string(dropStats.m_totalItems));
+            
+            // 如果有物品，显示绿色
+            if (dropStats.m_totalItems > 0)
+            {
+                m_dropsItemsText->SetColor(Rgba8(100, 255, 100));
+            }
+            else
+            {
+                m_dropsItemsText->SetColor(Rgba8(200, 200, 200));
+            }
+        }
     }
 }
 

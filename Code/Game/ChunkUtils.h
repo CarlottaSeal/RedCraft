@@ -41,6 +41,7 @@ bool IsRedstoneWire(uint8_t blockType);
 bool IsRedstonePowerable(uint8_t blockType);
 bool IsPowerSource(uint8_t blockType);
 bool IsCrop(uint8_t blockType);
+bool IsUnderwaterProduct(uint8_t blockType);
 bool IsPlantBillboard(uint8_t blockType);
 bool IsMatureCrop(uint8_t blockType);
 bool IsBlockTransparent(uint8_t blockType);

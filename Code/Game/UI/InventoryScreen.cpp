@@ -6,9 +6,10 @@
 #include "Engine/UI/Sprite.h"
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Core/EngineCommon.hpp"
-
+#include "Game/Game.hpp"
+extern Game* g_theGame;
 InventoryScreen::InventoryScreen(UISystem* uiSystem)
-    : UIScreen(uiSystem, UIScreenType::INVENTORY, true)
+    : UIScreen(uiSystem, UIScreenType::INVENTORY, g_theGame->m_screenCamera, true)
 {
 }
 
@@ -22,8 +23,9 @@ void InventoryScreen::Build()
     {
         return;
     }
-    
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildTitle();
@@ -44,8 +46,7 @@ void InventoryScreen::BuildBackground()
         false,
         Rgba8::BLACK
     );
-    m_elements.push_back(m_backgroundDimmer);
-    
+
     // 背包主面板
     AABB2 inventoryBounds(350, 150, 1250, 750);
     m_inventoryPanel = new Panel(
@@ -56,7 +57,6 @@ void InventoryScreen::BuildBackground()
         true,
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_inventoryPanel);
 }
 
 void InventoryScreen::BuildTitle()
@@ -68,7 +68,6 @@ void InventoryScreen::BuildTitle()
     
     Vec2 titlePos(400, 710);
     m_titleText = new Text(m_canvas, titlePos, titleSetting);
-    m_elements.push_back(m_titleText);
     
     // 工具提示（初始隐藏）
     TextSetting tooltipSetting;
@@ -79,7 +78,6 @@ void InventoryScreen::BuildTitle()
     Vec2 tooltipPos(0, 0);  // 动态更新
     m_tooltipText = new Text(m_canvas, tooltipPos, tooltipSetting);
     m_tooltipText->SetEnabled(false);
-    m_elements.push_back(m_tooltipText);
 }
 
 void InventoryScreen::BuildInventoryGrid()
@@ -103,7 +101,6 @@ void InventoryScreen::BuildInventoryGrid()
             
             ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
             m_itemSlots.push_back(slot);
-            m_elements.push_back(slot);
         }
     }
     
@@ -121,7 +118,6 @@ void InventoryScreen::BuildInventoryGrid()
         
         ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
         m_itemSlots.push_back(slot);
-        m_elements.push_back(slot);
     }
     
     // 在快捷栏上方添加分隔线标签
@@ -132,7 +128,6 @@ void InventoryScreen::BuildInventoryGrid()
     
     Vec2 hotbarLabelPos(400, 310);
     Text* hotbarLabel = new Text(m_canvas, hotbarLabelPos, hotbarLabelSetting);
-    m_elements.push_back(hotbarLabel);
 }
 
 void InventoryScreen::BuildDraggedItemSprite()
@@ -141,7 +136,6 @@ void InventoryScreen::BuildDraggedItemSprite()
     AABB2 spriteBounds(0, 0, 64, 64);
     m_draggedItemSprite = new Sprite(m_canvas, spriteBounds, nullptr);
     m_draggedItemSprite->SetEnabled(false);
-    m_elements.push_back(m_draggedItemSprite);
 }
 
 void InventoryScreen::RegisterSlotEvents()

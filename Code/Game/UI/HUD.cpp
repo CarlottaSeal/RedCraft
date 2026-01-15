@@ -1,5 +1,8 @@
-﻿// HUDScreen.cpp
-#include "HUD.h"
+﻿#include "HUD.h"
+
+#include "IconAtlas.h"
+#include "GameUIManager.h"
+#include "Game/Gamecommon.hpp"
 #include "Engine/UI/Canvas.hpp"
 #include "Engine/UI/Panel.h"
 #include "Engine/UI/ProgressBar.h"
@@ -7,9 +10,15 @@
 #include "Engine/UI/Text.h"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Input/InputSystem.hpp"
+#include "Game/Game.hpp"
+#include "Game/Player.hpp"
+#include "Game/Gameplay/Item.h"
+#include "Game/Gameplay/PlayerInventory.h"
+
+extern Game* g_theGame;
 
 HUD::HUD(UISystem* uiSystem)
-    : UIScreen(uiSystem, UIScreenType::HUD, false)  // HUD 不阻挡输入
+    : UIScreen(uiSystem, UIScreenType::HUD, g_theGame->m_screenCamera, false)
 {
 }
 
@@ -23,8 +32,9 @@ void HUD::Build()
     {
         return;
     }
-    // 设置相机为全屏UI视图
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildCrosshair();
     // BuildHealthBar();
@@ -32,13 +42,13 @@ void HUD::Build()
     // BuildHungerBar();
     // BuildExperienceBar();
     BuildHotbar();
-    BuildActionText();
+    //BuildActionText();
+    //BuildItemTooltip();
 }
 
 void HUD::BuildCrosshair()
 {
-    // 十字准星在屏幕中心
-    Vec2 center(800, 450);
+    Vec2 center = m_camera->GetOrthographicBounds().GetCenter();
     float size = 16.0f;
     
     AABB2 crosshairBounds(
@@ -47,16 +57,14 @@ void HUD::BuildCrosshair()
         center.x + size * 0.5f,
         center.y + size * 0.5f
     );
-    
-    // 使用 Sprite 或 Panel 创建十字准星
-    m_crosshair = new Sprite(m_canvas, crosshairBounds, nullptr);
+    IconAtlas* atlas = g_theGameUIManager->m_uiAtlas;
+    m_crosshair = new Sprite(m_canvas, crosshairBounds, nullptr,
+        ((SpriteSheet*)atlas)->GetSpriteUVs(IntVec2(0, 3)));
     m_crosshair->SetColor(Rgba8::WHITE);
-    m_elements.push_back(m_crosshair);
 }
 
 // void HUD::BuildHealthBar()
 // {
-//     // 生命值条在左下角，血条样式
 //     AABB2 healthBounds(20, 40, 220, 60);
 //     
 //     m_healthBar = new ProgressBar(
@@ -144,11 +152,11 @@ void HUD::BuildCrosshair()
 
 void HUD::BuildHotbar()
 {
-    // 快捷栏背景面板（屏幕底部中央）
-    float hotbarWidth = 720.0f;
-    float hotbarHeight = 80.0f;
-    float hotbarX = 800 - hotbarWidth * 0.5f;  // 居中
-    float hotbarY = 10.0f;
+    Vec2 size = m_camera->GetOrthographicBounds().GetDimensions();
+    float hotbarWidth = size.x*0.45f;
+    float hotbarHeight = size.x * 0.05f;
+    float hotbarX = size.x*0.5f - hotbarWidth * 0.5f;  
+    float hotbarY = size.y *0.01f;
     
     AABB2 hotbarBounds(
         hotbarX,
@@ -156,24 +164,32 @@ void HUD::BuildHotbar()
         hotbarX + hotbarWidth,
         hotbarY + hotbarHeight
     );
-    
+    AABB2 hotbarUV =g_theGameUIManager->m_uiAtlas->GetSpriteUVsByName("HotbarPanel");
     m_hotbarPanel = new Panel(
         m_canvas,
         hotbarBounds,
-        Rgba8(0, 0, 0, 150),  // 半透明黑色背景
+        Rgba8::WHITE,
         nullptr,
-        true,                 // 有边框
-        Rgba8(100, 100, 100)
+        false,              
+        Rgba8(100, 100, 100),
+        hotbarUV
     );
-    m_elements.push_back(m_hotbarPanel);
+    float slotPaddingRatio = 0.01f;  
+    float slotPadding = hotbarWidth * slotPaddingRatio;
+    float availableWidth = hotbarWidth - slotPadding * 2;  
+    float slotSize = (availableWidth - slotPadding * (SLOTS_PER_ROW - 1)) / SLOTS_PER_ROW;
     
-    // 创建 9 个物品槽
-    float slotSize = 70.0f;
-    float slotPadding = 5.0f;
-    float startX = hotbarX + 5.0f;
-    float startY = hotbarY + 5.0f;
+    float startX = hotbarX + slotPadding;
+    float startY = hotbarY + slotPadding;
     
-    for (int i = 0; i < HOTBAR_SLOT_COUNT; i++)
+    float iconPaddingRatio = 0.07f;  // 图标内边距占槽位的比例
+    float iconPadding = slotSize * iconPaddingRatio;
+    float iconTopPadding = slotSize * 0.21f;  // 图标顶部额外留白
+    float countTextHeight = slotSize * 0.2f;  // 数字高度
+    float countTextOffsetX = slotSize * 0.29f;  // 数字右侧偏移
+    float countTextOffsetY = slotSize * 0.07f;  // 数字底部偏移
+    
+    for (int i = 0; i < SLOTS_PER_ROW; i++)
     {
         float slotX = startX + i * (slotSize + slotPadding);
         AABB2 slotBounds(
@@ -182,51 +198,60 @@ void HUD::BuildHotbar()
             slotX + slotSize,
             startY + slotSize
         );
-        
-        // 物品槽背景
         Panel* slot = new Panel(
             m_canvas,
             slotBounds,
-            Rgba8(55, 55, 55),
+            Rgba8(0, 0, 0,0),
             nullptr,
             true,
-            Rgba8(139, 139, 139)
+            Rgba8(139, 139, 139),
+            AABB2(0,0,0,0)
         );
         m_hotbarSlots.push_back(slot);
-        m_elements.push_back(slot);
         
-        // 物品图标（默认为空）
-        Sprite* icon = new Sprite(m_canvas, slotBounds, nullptr);
+        AABB2 iconBounds(
+            slotX + iconPadding,
+            startY + iconTopPadding,
+            slotX + slotSize - iconPadding,
+            startY + slotSize - iconPadding
+        );
+        Sprite* icon = new Sprite(m_canvas, iconBounds, nullptr, AABB2(0,0,0,0));
         m_hotbarIcons.push_back(icon);
-        m_elements.push_back(icon);
+        
+        TextSetting countSetting;
+        countSetting.m_text = "";
+        countSetting.m_color = Rgba8::WHITE;
+        countSetting.m_height = countTextHeight;
+        Vec2 countPos(
+            slotX + slotSize - countTextOffsetX,
+            startY + countTextOffsetY
+        );
+        Text* countText = new Text(m_canvas, countPos, countSetting);
+        m_hotbarCounts.push_back(countText);
     }
-    
-    // 选中框（高亮边框）
+    AABB2 uv = g_theGameUIManager->m_uiAtlas->GetSpriteUVsByName("SelectionFrame");
     AABB2 selectionBounds = m_hotbarSlots[0]->GetBounds();
     m_hotbarSelectionFrame = new Panel(
         m_canvas,
         selectionBounds,
-        Rgba8(255, 255, 255, 0),  // 透明背景
+        Rgba8::WHITE,
         nullptr,
-        true,
-        Rgba8::WHITE  // 白色边框
+        false,
+        Rgba8::WHITE,
+        uv
     );
-    m_elements.push_back(m_hotbarSelectionFrame);
 }
-
 void HUD::BuildActionText()
 {
-    // 屏幕中心偏下显示动作提示文本
     TextSetting setting;
     setting.m_text = "";
     setting.m_color = Rgba8::WHITE;
     setting.m_height = 30.0f;
     
-    Vec2 textPos(800, 350);  // 屏幕中心偏下
+    Vec2 textPos(800, 350);  // 屏幕中心偏下 TODO
     
     m_actionText = new Text(m_canvas, textPos, setting);
-    m_actionText->SetEnabled(false);  // 默认隐藏
-    m_elements.push_back(m_actionText);
+    m_actionText->SetEnabled(false);  
 }
 
 void HUD::Update(float deltaSeconds)
@@ -260,50 +285,23 @@ void HUD::Update(float deltaSeconds)
             }
         }
     }
+    if (m_tooltipTimer > 0.0f)
+    {
+        m_tooltipTimer -= deltaSeconds;
+        if (m_tooltipTimer <= 0.0f && m_itemTooltip)
+        {
+            m_itemTooltip->SetEnabled(false);
+        }
+    }
     
-    // 处理快捷栏数字键输入
-    HandleHotbarInput();
+    RefreshHotbarDisplay();
+    UpdateSelectionFrame();
 }
 
-void HUD::HandleHotbarInput()
+void HUD::Render() const
 {
-    if (!m_canvas)
-    {
-        return;
-    }
-    
-    InputSystem* input = m_canvas->GetSystemInputSystem();
-    if (!input)
-    {
-        return;
-    }
-
-    for (int i = 0; i < HOTBAR_SLOT_COUNT; i++)
-    {
-        unsigned char key = (unsigned char)('1' + i);
-        if (input->WasKeyJustPressed(key))
-        {
-            SelectHotbarSlot(i);
-        }
-    }
-    
-    // 鼠标滚轮切换
-    float wheelDelta = input->GetMouseWheelDelta();
-    if (wheelDelta != 0.0f)
-    {
-        int newSlot = m_selectedHotbarSlot;
-        
-        if (wheelDelta > 0)
-        {
-            newSlot = (m_selectedHotbarSlot + 1) % HOTBAR_SLOT_COUNT;
-        }
-        else
-        {
-            newSlot = (m_selectedHotbarSlot - 1 + HOTBAR_SLOT_COUNT) % HOTBAR_SLOT_COUNT;
-        }
-        
-        SelectHotbarSlot(newSlot);
-    }
+    g_theRenderer->BindTexture(g_theGameUIManager->m_uiAtlas->GetTexture());
+    UIScreen::Render();
 }
 
 // void HUD::UpdateHealth(float healthPercent)
@@ -350,7 +348,7 @@ void HUD::HandleHotbarInput()
 
 void HUD::SetHotbarSlot(int slotIndex, Texture* itemTexture)
 {
-    if (slotIndex < 0 || slotIndex >= HOTBAR_SLOT_COUNT)
+    if (slotIndex < 0 || slotIndex >= SLOTS_PER_ROW)
     {
         return;
     }
@@ -358,22 +356,6 @@ void HUD::SetHotbarSlot(int slotIndex, Texture* itemTexture)
     if (m_hotbarIcons[slotIndex])
     {
         m_hotbarIcons[slotIndex]->SetTexture(itemTexture);
-    }
-}
-
-void HUD::SelectHotbarSlot(int slotIndex)
-{
-    if (slotIndex < 0 || slotIndex >= HOTBAR_SLOT_COUNT)
-    {
-        return;
-    }
-    
-    m_selectedHotbarSlot = slotIndex;
-
-    if (m_hotbarSelectionFrame && slotIndex < (int)m_hotbarSlots.size())
-    {
-        AABB2 newBounds = m_hotbarSlots[slotIndex]->GetBounds();
-        m_hotbarSelectionFrame->SetBounds(newBounds);
     }
 }
 
@@ -385,5 +367,69 @@ void HUD::ShowActionMessage(std::string const& message, float duration)
         m_actionText->SetEnabled(true);
         m_actionTextTimer = duration;
         m_actionTextDuration = duration;
+    }
+}
+
+void HUD::BuildItemTooltip()
+{
+    TextSetting tooltipSetting;
+    tooltipSetting.m_text = "";
+    tooltipSetting.m_color = Rgba8::WHITE;
+    tooltipSetting.m_height = 20.0f;
+    
+    Vec2 tooltipPos(800, 100);  // 快捷栏上方
+    m_itemTooltip = new Text(m_canvas, tooltipPos, tooltipSetting);
+    m_itemTooltip->SetEnabled(false);
+}
+
+void HUD::RefreshHotbarDisplay()
+{
+    Player* player = g_theGame->m_player;
+    PlayerInventory* inventory = player->GetInventory();
+    IconAtlas* atlas = g_theGameUIManager->m_uiAtlas;
+    
+    if (!inventory || !atlas)
+        return;
+    
+    int activeRow = inventory->GetActiveRow();
+    
+    for (int i = 0; i < SLOTS_PER_ROW; i++)  
+    {
+        int absoluteSlot = activeRow * SLOTS_PER_ROW + i;
+        Item const& item = inventory->GetHotbarSlot(absoluteSlot);
+        
+        if (m_hotbarIcons[i])
+        {
+            if (item.IsEmpty())
+            {
+                m_hotbarIcons[i]->SetUVs(AABB2(0, 0, 0, 0));
+            }
+            else
+            {
+                AABB2 uvs = atlas->GetItemIconUVs(item.GetName());
+                m_hotbarIcons[i]->SetUVs(uvs);
+            }
+        }
+    }
+}
+
+void HUD::UpdateSelectionFrame()
+{
+    Player* player = g_theGame->m_player;
+    if (!player) return;
+    
+    PlayerInventory* inventory = player->GetInventory();
+    if (!inventory) return;
+    
+    int slotInRow = inventory->GetSelectedSlotInRow();
+    
+    if (slotInRow >= 0 && slotInRow < (int)m_hotbarSlots.size())
+    {
+        AABB2 bounds = m_hotbarSlots[slotInRow]->GetBounds();
+        
+        if (m_hotbarSelectionFrame)
+        {
+            m_hotbarSelectionFrame->SetBounds(bounds);
+        }
     }
 }

@@ -1,9 +1,13 @@
 ﻿#include "Player.hpp"
 #include "Game.hpp"
 #include "App.hpp"
+#include "World.h"
 #include "Physics/GameCamera.h"
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Window/Window.hpp"
+#include "Gameplay/PlayerInventory.h"
+#include "UI/GameUIManager.h"
+#include "UI/HUD.h"
 
 extern InputSystem* g_theInput;
 extern Window* g_theWindow;
@@ -32,6 +36,8 @@ Player::Player(Game* owner, Vec3 const& startPos)
 	
 	m_worldCamera.SetPosition(GetEyePosition());
 	m_worldCamera.SetOrientation(m_orientation);
+
+	m_inventory = new PlayerInventory();
 }
 
 Player::~Player()
@@ -40,6 +46,11 @@ Player::~Player()
 	{
 		delete m_gameCamera;
 		m_gameCamera = nullptr;
+	}
+	if (m_inventory)
+	{
+		delete m_inventory;
+		m_inventory = nullptr;
 	}
 }
 
@@ -56,6 +67,8 @@ void Player::Update(float deltaSeconds)
 		// Sync world camera with game camera
 		m_worldCamera.SetPosition(m_gameCamera->GetPosition());
 		m_worldCamera.SetOrientation(m_gameCamera->GetOrientation());
+
+		HandleHotbarInput();
 	}
 }
 
@@ -111,6 +124,7 @@ void Player::UpdateInput(float deltaSeconds)
 	{
 		Jump();
 	}
+	
 }
 
 void Player::UpdateFromKeyboard(float deltaSeconds)
@@ -231,6 +245,33 @@ void Player::CycleCameraMode()
 	}
 }
 
+void Player::CollectNearbyDrops()
+{
+	// if (!m_world || !m_hotbarSystem)
+	// 	return;
+	//    
+	// CropDropManager* dropMgr = m_world->GetCropDropManager();
+	// if (!dropMgr)
+	// 	return;
+	//    
+	// // 1. 收集附近掉落物
+	// Vec3 playerPos = m_position;
+	// std::vector<PendingDrop> collected = dropMgr->CollectDropsNear(playerPos, 2.0f);
+	//    
+	// // 2. 添加到快捷栏
+	// for (const PendingDrop& drop : collected)
+	// {
+	// 	m_hotbarSystem->AddItem(drop.m_itemType, drop.m_count);
+	// }
+	//    
+	// // 3. 刷新UI
+	// if (!collected.empty())
+	// {
+	// 	g_theGameUIManager->GetHUD()->RefreshHotbarDisplay();
+	// }
+
+}
+
 Direction Player::GetOrthoDirection()
 {
 	Vec3 forward = GetForwardVector();
@@ -295,3 +336,67 @@ Direction Player::GetOrthoDirectionOpposite()
 		return DIRECTION_UP;
 	}
 }
+
+void Player::SelectHotbarSlot(int slot)
+{
+	if (m_inventory)
+	{
+		m_inventory->SetSelectedHotbarSlot(slot);
+        
+		if (g_theGameUIManager)
+		{
+			HUD* hud = g_theGameUIManager->GetHUD();
+			if (hud)
+				hud->UpdateSelectionFrame();
+		}
+	}
+}
+
+int Player::GetSelectedHotbarSlot() const
+{
+	return m_inventory ? m_inventory->GetSelectedHotbarSlot() : 0;
+}
+
+Item const& Player::GetSelectedItem() const
+{
+	static Item empty;
+	return m_inventory ? m_inventory->GetSelectedItem() : empty;
+}
+
+void Player::HandleHotbarInput()
+{
+	if (!m_inventory)
+		return;
+	if (g_theInput->WasKeyJustPressed('X'))
+	{
+		m_inventory->SwitchHotbarRow();
+        
+		if (g_theGameUIManager)
+		{
+			HUD* hud = g_theGameUIManager->GetHUD();
+			if (hud)
+			{
+				hud->RefreshHotbarDisplay();
+				hud->UpdateSelectionFrame();
+			}
+		}
+		return;
+	}
+	for (int i = 0; i < SLOTS_PER_ROW; i++)
+	{
+		if (g_theInput->WasKeyJustPressed('1' + i))
+		{
+			SelectHotbarSlot(i);
+			return;
+		}
+	}
+	float wheel = g_theInput->GetMouseWheelDelta();
+	if (wheel != 0.0f)
+	{
+		int current = GetSelectedHotbarSlot();
+		int newSlot = (wheel > 0) ? (current + 1) % SLOTS_PER_ROW : (current - 1 + SLOTS_PER_ROW) % SLOTS_PER_ROW;
+		SelectHotbarSlot(newSlot);
+	}
+}
+
+

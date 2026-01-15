@@ -1,13 +1,14 @@
-﻿// Game/UI/PauseMenuScreen.cpp
-#include "PauseMenuScreen.h"
+﻿#include "PauseMenuScreen.h"
 #include "Engine/UI/Canvas.hpp"
 #include "Engine/UI/Panel.h"
 #include "Engine/UI/Button.h"
 #include "Engine/UI/Text.h"
 #include "Engine/Core/EngineCommon.hpp"
+#include "Game/Game.hpp"
+extern Game* g_theGame;
 
 PauseMenuScreen::PauseMenuScreen(UISystem* uiSystem)
-    : UIScreen(uiSystem, UIScreenType::PAUSE_MENU, true)
+    : UIScreen(uiSystem, UIScreenType::PAUSE_MENU, g_theGame->m_screenCamera, true)
 {
 }
 
@@ -21,8 +22,9 @@ void PauseMenuScreen::Build()
     {
         return;
     }
-    
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildTitle();
@@ -41,7 +43,6 @@ void PauseMenuScreen::BuildBackground()
         false,
         Rgba8::BLACK
     );
-    m_elements.push_back(m_backgroundDimmer);
     
     // 菜单面板
     AABB2 menuBounds(550, 200, 1050, 700);
@@ -53,7 +54,6 @@ void PauseMenuScreen::BuildBackground()
         true,
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_menuPanel);
 }
 
 void PauseMenuScreen::BuildTitle()
@@ -63,9 +63,8 @@ void PauseMenuScreen::BuildTitle()
     titleSetting.m_color = Rgba8(230, 230, 230);
     titleSetting.m_height = 48.0f;
     
-    Vec2 titlePos(800, 650);  // 居中显示
+    Vec2 titlePos(800, 650);  // 居中显示 TODO
     m_titleText = new Text(m_canvas, titlePos, titleSetting);
-    m_elements.push_back(m_titleText);
 }
 
 void PauseMenuScreen::BuildButtons()
@@ -82,16 +81,14 @@ void PauseMenuScreen::BuildButtons()
         centerX + buttonWidth * 0.5f, startY + buttonHeight
     );
     m_resumeButton = new Button(
-        nullptr,
+        m_canvas,
         resumeBounds,
         Rgba8(100, 200, 100),  // 绿色 hover
         Rgba8::WHITE,
+        Rgba8::GREY,
         "ResumeGame",
-        "Back to Game",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_resumeButton);
-    m_elements.push_back(m_resumeButton);
     
     // Settings 按钮
     startY -= (buttonHeight + spacing);
@@ -100,16 +97,14 @@ void PauseMenuScreen::BuildButtons()
         centerX + buttonWidth * 0.5f, startY + buttonHeight
     );
     m_settingsButton = new Button(
-        nullptr,
+        m_canvas,
         settingsBounds,
         Rgba8(100, 150, 200),  // 蓝色 hover
         Rgba8::WHITE,
+        Rgba8::GREY,
         "OpenSettings",
-        "Settings",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_settingsButton);
-    m_elements.push_back(m_settingsButton);
     
     // Save Game 按钮
     startY -= (buttonHeight + spacing);
@@ -118,16 +113,14 @@ void PauseMenuScreen::BuildButtons()
         centerX + buttonWidth * 0.5f, startY + buttonHeight
     );
     m_saveButton = new Button(
-        nullptr,
+        m_canvas,
         saveBounds,
         Rgba8(200, 180, 100),  // 黄色 hover
         Rgba8::WHITE,
+        Rgba8::GREY,
         "SaveGame",
-        "Save Game",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_saveButton);
-    m_elements.push_back(m_saveButton);
     
     // Main Menu 按钮
     startY -= (buttonHeight + spacing);
@@ -136,16 +129,14 @@ void PauseMenuScreen::BuildButtons()
         centerX + buttonWidth * 0.5f, startY + buttonHeight
     );
     m_mainMenuButton = new Button(
-        nullptr,
+        m_canvas,
         mainMenuBounds,
         Rgba8(200, 120, 100),  // 橙红色 hover
         Rgba8::WHITE,
+        Rgba8::GREY,
         "BackToMainMenu",
-        "Save and Quit to Title",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_mainMenuButton);
-    m_elements.push_back(m_mainMenuButton);
     
     // Quit Game 按钮
     startY -= (buttonHeight + spacing);
@@ -154,16 +145,14 @@ void PauseMenuScreen::BuildButtons()
         centerX + buttonWidth * 0.5f, startY + buttonHeight
     );
     m_quitButton = new Button(
-        nullptr,
+        m_canvas,
         quitBounds,
         Rgba8(200, 80, 80),  // 红色 hover
         Rgba8::WHITE,
+        Rgba8::GREY,
         "QuitGame",
-        "Quit to Desktop",
         Vec2(0.5f, 0.5f)
     );
-    m_canvas->AddElementToCanvas(m_quitButton);
-    m_elements.push_back(m_quitButton);
 }
 
 void PauseMenuScreen::OnEnter()

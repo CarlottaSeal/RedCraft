@@ -1,13 +1,13 @@
-﻿// Game/UI/FurnaceScreen.cpp
-#include "FurnaceScreen.h"
+﻿#include "FurnaceScreen.h"
 #include "Engine/UI/Canvas.hpp"
 #include "Engine/UI/Panel.h"
 #include "Engine/UI/Text.h"
 #include "Engine/UI/ProgressBar.h"
 #include "Engine/Core/EngineCommon.hpp"
-
+#include "Game/Game.hpp"
+extern Game* g_theGame;
 FurnaceScreen::FurnaceScreen(UISystem* uiSystem, int furnaceID)
-    : UIScreen(uiSystem, UIScreenType::FURNACE, true)
+    : UIScreen(uiSystem, UIScreenType::FURNACE, g_theGame->m_screenCamera, true)
     , m_furnaceID(furnaceID)
 {
 }
@@ -22,8 +22,9 @@ void FurnaceScreen::Build()
     {
         return;
     }
-    
-    m_camera->SetOrthographicView(Vec2(0, 0), Vec2(1600, 900));
+    AABB2 bounds = m_camera->GetOrthographicBounds();
+    Vec2 size = bounds.GetDimensions();
+    m_camera->SetOrthographicView(Vec2(0, 0), size);
     
     BuildBackground();
     BuildFurnaceSlots();
@@ -43,7 +44,6 @@ void FurnaceScreen::BuildBackground()
         false,
         Rgba8::BLACK
     );
-    m_elements.push_back(m_backgroundDimmer);
     
     AABB2 furnacePanelBounds(400, 150, 1200, 750);
     m_furnacePanel = new Panel(
@@ -54,7 +54,6 @@ void FurnaceScreen::BuildBackground()
         true,
         Rgba8(120, 120, 120)
     );
-    m_elements.push_back(m_furnacePanel);
     
     TextSetting titleSetting;
     titleSetting.m_text = "Furnace";
@@ -63,7 +62,6 @@ void FurnaceScreen::BuildBackground()
     
     Vec2 titlePos(450, 710);
     m_titleText = new Text(m_canvas, titlePos, titleSetting);
-    m_elements.push_back(m_titleText);
 }
 
 void FurnaceScreen::BuildFurnaceSlots()
@@ -73,17 +71,14 @@ void FurnaceScreen::BuildFurnaceSlots()
     // 输入槽（上方）
     AABB2 inputBounds(650, 620, 650 + slotSize, 620 + slotSize);
     m_inputSlot = new ItemSlot(m_canvas, inputBounds, 0);
-    m_elements.push_back(m_inputSlot);
     
     // 燃料槽（下方）
     AABB2 fuelBounds(650, 500, 650 + slotSize, 500 + slotSize);
     m_fuelSlot = new ItemSlot(m_canvas, fuelBounds, 1);
-    m_elements.push_back(m_fuelSlot);
     
     // 输出槽（右侧）
     AABB2 outputBounds(880, 560, 880 + slotSize, 560 + slotSize);
     m_outputSlot = new ItemSlot(m_canvas, outputBounds, 2);
-    m_elements.push_back(m_outputSlot);
     
     // 熔炉图标（装饰）
     TextSetting iconSetting;
@@ -93,7 +88,6 @@ void FurnaceScreen::BuildFurnaceSlots()
     
     Vec2 iconPos(670, 560);
     Text* furnaceIcon = new Text(m_canvas, iconPos, iconSetting);
-    m_elements.push_back(furnaceIcon);
 }
 
 void FurnaceScreen::BuildProgressBars()
@@ -111,7 +105,6 @@ void FurnaceScreen::BuildProgressBars()
         true
     );
     m_smeltingProgressBar->SetOrientation(ProgressBarOrientation::HORIZONTAL);
-    m_elements.push_back(m_smeltingProgressBar);
     
     // 燃料消耗进度条（纵向，在燃料槽内）
     AABB2 fuelBounds(655, 505, 670, 585);
@@ -126,7 +119,6 @@ void FurnaceScreen::BuildProgressBars()
         true
     );
     m_fuelProgressBar->SetOrientation(ProgressBarOrientation::VERTICAL);
-    m_elements.push_back(m_fuelProgressBar);
 }
 
 void FurnaceScreen::BuildPlayerGrid()
@@ -148,7 +140,6 @@ void FurnaceScreen::BuildPlayerGrid()
             
             ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
             m_playerSlots.push_back(slot);
-            m_elements.push_back(slot);
         }
     }
     
@@ -164,7 +155,6 @@ void FurnaceScreen::BuildPlayerGrid()
         
         ItemSlot* slot = new ItemSlot(m_canvas, slotBounds, slotIndex);
         m_playerSlots.push_back(slot);
-        m_elements.push_back(slot);
     }
 }
 

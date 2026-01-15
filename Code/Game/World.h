@@ -2,13 +2,16 @@
 #include <map>
 #include <mutex>
 #include <set>
-#include <unordered_map>
 #include <vector>
 
 #include "BlockIterator.h"
 #include "Gamecommon.hpp"
 #include "Generator/WorldGenPipeline.h"
+#include "Weather/WeatherSystem.h"
 
+class WeatherParticleRenderer;
+class CloudSystem;
+class MediumSystem;
 class RedstoneSimulator;
 class BlockIterator;
 struct IntVec2;
@@ -46,7 +49,6 @@ public:
     void Render() const;
 
     
-
     Chunk* GetChunkFromPlayerCameraPosition(Vec3 cameraPos);
     Chunk* GetChunk(int chunkX, int chunkY);
     Block GetBlockAtWorldCoords(int worldX, int worldY, int worldZ);
@@ -80,6 +82,9 @@ public:
     void OnBlockStateChanged(const BlockIterator& block, uint8_t oldType, uint8_t newType);
 
     const std::map<IntVec2, Chunk*>& GetActiveChunks();
+
+    std::string GetWorldTypeName() const;
+    std::string GetSaveSubdirectory() const;
     
     void ToggleDebugMode();
     void ToggleDebugPrintingMode();
@@ -101,7 +106,7 @@ private:
     void ConnectChunkNeighbors(Chunk* chunk);
     void DisconnectChunkNeighbors(Chunk* chunk);
     void ForceDeactivateAllChunks();  
-    void SaveAllModifiedChunks();
+    void SaveAllChunks();
     
     void ProcessCompletedJobs();
     void SubmitNewActivateJobs();
@@ -115,6 +120,7 @@ private:
     void UnregisterCropsInChunk(const IntVec2& chunkCoords);
 
     void BindWorldConstansBuffer() const;
+    void RenderTransparent() const;
     void RenderBlockHighlight() const;
 
 private:
@@ -125,11 +131,16 @@ public:
     Game* m_owner;
     WorldGenPipeline* m_worldGenPipeline;
     bool m_hasDirtyChunk = false;
+    std::string m_worldName = "";
 
     BlockHighlight m_highlightedBlock;
 
     RedstoneSimulator* m_redstoneSimulator = nullptr;
     CropSystem* m_cropSystem = nullptr;
+    WeatherSystem*  m_weatherSystem = nullptr;
+    MediumSystem*   m_mediumSystem = nullptr;
+    CloudSystem*    m_cloudSystem = nullptr;
+    WeatherParticleRenderer* m_weatherParticleRenderer = nullptr; 
 
     Shader* m_worldShader = nullptr;
     ConstantBuffer* m_worldConstantBuffer = nullptr;
@@ -147,6 +158,9 @@ public:
     bool m_isRaycastLocked = false;
     GameRaycastResult3D m_currentRaycast;
 
+    static const int SORT_CHUNK_FREQUENCY = 3;
+    const int MAX_SORTED_CHUNKS = 25;
+    const float MAX_SORT_DISTANCE = 300.0f * 300.0f;
 protected:
     std::map<IntVec2, Chunk*> m_activeChunks;
     std::vector<Chunk*> m_visibleChunks;
@@ -156,6 +170,7 @@ protected:
     
     std::map<IntVec2, Chunk*> m_processingChunks; 
     std::mutex m_processingChunksMutex;
+    mutable int m_sortFrameCounter = 0;
 
     int m_generatingChunksCount = 0; //debugging
 

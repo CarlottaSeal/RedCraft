@@ -17,8 +17,15 @@ WorldGenPipeline::WorldGenPipeline()
 
 void WorldGenPipeline::GenerateChunk(Chunk* chunk)
 {
-    ChunkGenData chunkGenData = ChunkGenData();
+    if (!chunk)
+        return;
+    if (m_genMode == WorldGenMode::FLAT_FARM)
+    {
+        GenerateFlatFarmChunk(chunk);
+        return;
+    }
     
+    ChunkGenData chunkGenData = ChunkGenData();
     ExecuteBiomeStage(chunk, &chunkGenData);
     ExecuteNoiseStage(chunk, &chunkGenData);
     if (g_theGame->g_caveCarvingEnabled)
@@ -183,7 +190,6 @@ void WorldGenPipeline::ExecuteWaterStage(Chunk* chunk, ChunkGenData* chunkGenDat
                 }
             }
             
-            // 只填充地表到海平面之间的水 
             if (firstSolidZ >= 0 && firstSolidZ < g_theGame->g_seaLevel)
             {
                 // 从地表+1到海平面-1，填充连续的AIR为水
@@ -203,8 +209,7 @@ void WorldGenPipeline::ExecuteWaterStage(Chunk* chunk, ChunkGenData* chunkGenDat
                     }
                 }
             }
-            
-            // ===== 3. 如果整个柱子都是空气（深海），填满到海平面 =====
+            // 如果整个柱子都是空气（深海），填满到海平面 
             if (firstSolidZ < 0)
             {
                 for (int z = 2; z < g_theGame->g_seaLevel; z++)
@@ -267,6 +272,34 @@ void WorldGenPipeline::ExecuteFeatureStage(Chunk* chunk, ChunkGenData* chunkGenD
                     }
                 }
             }
+            if (biome == BiomeGenerator::BIOME_OCEAN || 
+    biome == BiomeGenerator::BIOME_DEEP_OCEAN || 
+    biome == BiomeGenerator::BIOME_FROZEN_OCEAN)
+            {
+                if (m_featurePlacer.ShouldPlaceUnderwaterPlant(worldX, worldY, biome))
+                {
+                    int seabedZ = -1;
+                    for (int z = CHUNK_SIZE_Z - 1; z >= 0; --z)
+                    {
+                        int idx = LocalCoordsToIndex(x, y, z);
+                        uint8_t blockType = chunk->m_blocks[idx].m_typeIndex;
+                        if (blockType != BLOCK_TYPE_AIR && blockType != BLOCK_TYPE_WATER)
+                        {
+                            seabedZ = z;
+                            break;
+                        }
+                    }
+                    if (seabedZ >= 0 && seabedZ < CHUNK_SIZE_Z - 1)
+                    {
+                        int idxAbove = LocalCoordsToIndex(x, y, seabedZ + 1);
+                        if (chunk->m_blocks[idxAbove].m_typeIndex == BLOCK_TYPE_WATER)
+                        {
+                            float temperature = chunkGenData->m_biomeParams[x][y].m_temperature;  
+                            m_featurePlacer.PlaceUnderwaterPlants(chunk, x, y, seabedZ, biome, temperature);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -275,4 +308,59 @@ void WorldGenPipeline::ExecuteCarverStage(Chunk* chunk, ChunkGenData* chunkGenDa
 {
     UNUSED(chunkGenData)
     UNUSED(chunk)
+}
+
+void WorldGenPipeline::GenerateFlatFarmChunk(Chunk* chunk)
+{
+    IntVec2 chunkCoords = chunk->GetThisChunkCoords();
+    bool isInFarmArea = IsInFarmWorldArea(chunkCoords);
+    int worldX = chunkCoords.x * CHUNK_SIZE_X;
+    int worldY = chunkCoords.y * CHUNK_SIZE_Y;
+	
+    for (int localX = 0; localX < CHUNK_SIZE_X; localX++)
+    {
+        for (int localY = 0; localY < CHUNK_SIZE_Y; localY++)
+        {
+            for (int localZ = 0; localZ < CHUNK_SIZE_Z; localZ++)
+            {
+                int blockIndex = chunk->GetBlockLocalIndexFromLocalCoords(localX, localY, localZ);
+                Block& block = chunk->m_blocks[blockIndex];
+				
+                if (isInFarmArea)
+                {
+                    if (localZ < m_farmWorldHeight - 1)
+                    {
+                        block.SetType(BLOCK_TYPE_DIRT);
+                    }
+                    else if (localZ == m_farmWorldHeight - 1)
+                    {
+                        block.SetType(BLOCK_TYPE_FARMLAND);
+                    }
+                    else
+                    {
+                        block.SetType(BLOCK_TYPE_AIR);
+                    }
+                }
+                else
+                {
+                    // 农场区域外 - 生成空世界或基岩
+                    if (localZ == 0)
+                    {
+                        block.SetType(BLOCK_TYPE_OBSIDIAN);
+                    }
+                    else
+                    {
+                        block.SetType(BLOCK_TYPE_AIR);
+                    }
+                }
+            }
+        }
+    }
+}
+
+bool WorldGenPipeline::IsInFarmWorldArea(const IntVec2& chunkCoords) const
+{
+    int deltaX = chunkCoords.x - m_farmWorldCenter.x;
+    int deltaY = chunkCoords.y - m_farmWorldCenter.y;
+    return (abs(deltaX) <= m_farmWorldRadius && abs(deltaY) <= m_farmWorldRadius);
 }

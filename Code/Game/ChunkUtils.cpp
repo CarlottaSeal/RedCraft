@@ -197,33 +197,71 @@ Rgba8 GetCropGrowthColor(uint8_t type)
 
 bool IsSolid(uint8_t type)
 {
+	// if (IsRedstoneComponent(type))
+	// 	return true;
 	switch (type)
 	{
-	case BLOCK_TYPE_STONE:
-	case BLOCK_TYPE_DIRT:
-	case BLOCK_TYPE_GRASS:
 	case BLOCK_TYPE_SAND:
-	case BLOCK_TYPE_COBBLESTONE:
-	case BLOCK_TYPE_CHISELED_BRICK:
-	case BLOCK_TYPE_OBSIDIAN:
+	case BLOCK_TYPE_SNOW:
+	case BLOCK_TYPE_ICE:
+	case BLOCK_TYPE_DIRT:
+	case BLOCK_TYPE_STONE:
 	case BLOCK_TYPE_COAL:
 	case BLOCK_TYPE_IRON:
 	case BLOCK_TYPE_GOLD:
 	case BLOCK_TYPE_DIAMOND:
+	case BLOCK_TYPE_OBSIDIAN:
+	case BLOCK_TYPE_LAVA:
 	case BLOCK_TYPE_GLOWSTONE:
-	case BLOCK_TYPE_ICE:
-	case BLOCK_TYPE_OAK_LOG:
-	case BLOCK_TYPE_BIRCH_LOG:
-	case BLOCK_TYPE_CACTUS_LOG:
-	case BLOCK_TYPE_SPRUCE_LOG:
-	case BLOCK_TYPE_JUNGLE_LOG:
+	case BLOCK_TYPE_COBBLESTONE:
+	case BLOCK_TYPE_CHISELED_BRICK:
+	
+	case BLOCK_TYPE_GRASS:
+	// case BLOCK_TYPE_GRASS_LIGHT:
+	// case BLOCK_TYPE_GRASS_DARK:
+	// case BLOCK_TYPE_GRASS_YELLOW:
+	
 	case BLOCK_TYPE_ACACIA_LOG:
-	case BLOCK_TYPE_BIRCH_PLANKS:
-	case BLOCK_TYPE_OAK_PLANKS:
-	case BLOCK_TYPE_JUNGLE_PLANKS:
-	case BLOCK_TYPE_SPRUCE_PLANKS:
 	case BLOCK_TYPE_ACACIA_PLANKS:
-	case BLOCK_TYPE_SNOW:
+	case BLOCK_TYPE_ACACIA_LEAVES:
+	case BLOCK_TYPE_CACTUS_LOG:
+	case BLOCK_TYPE_OAK_LOG:
+	case BLOCK_TYPE_OAK_PLANKS:
+	case BLOCK_TYPE_OAK_LEAVES:
+	case BLOCK_TYPE_BIRCH_LOG:
+	case BLOCK_TYPE_BIRCH_PLANKS:
+	case BLOCK_TYPE_BIRCH_LEAVES:
+	case BLOCK_TYPE_JUNGLE_LOG:
+	case BLOCK_TYPE_JUNGLE_PLANKS:
+	case BLOCK_TYPE_JUNGLE_LEAVES:
+	case BLOCK_TYPE_SPRUCE_LOG:
+	case BLOCK_TYPE_SPRUCE_PLANKS:
+	case BLOCK_TYPE_SPRUCE_LEAVES:
+	case BLOCK_TYPE_SPRUCE_LEAVES_SNOW:
+	
+	case BLOCK_TYPE_REDSTONE_BLOCK:
+	case BLOCK_TYPE_REDSTONE_LAMP_OFF:
+	case BLOCK_TYPE_REDSTONE_LAMP_ON:
+	case BLOCK_TYPE_REDSTONE_PISTON:
+	case BLOCK_TYPE_REDSTONE_STICKY_PISTON:
+	case BLOCK_TYPE_PISTON_HEAD:
+	//case BLOCK_TYPE_STICKY_PISTON_HEAD:
+	case BLOCK_TYPE_REDSTONE_OBSERVER:
+	
+	case BLOCK_TYPE_FARMLAND:
+	case BLOCK_TYPE_FARMLAND_WET:
+	
+	case BLOCK_TYPE_PUMPKIN:
+	case BLOCK_TYPE_MELON:
+	
+	case BLOCK_TYPE_CORAL_BLOCK_RED:
+	case BLOCK_TYPE_CORAL_BLOCK_PURPLE:
+	case BLOCK_TYPE_CORAL_BLOCK_DEAD:
+	case BLOCK_TYPE_CORAL_BLOCK_YELLOW:
+	// CORAL_BLOCK_FAN_DEAD 不是 solid (是扁片)
+	case BLOCK_TYPE_SPONGE:
+	case BLOCK_TYPE_WET_SPONGE:
+	
 		return true;
 	default:
 		return false;
@@ -272,7 +310,8 @@ bool IsOpaque(uint8_t blockType)
 	if (IsLiquid(blockType)) return false;
 	if (IsFoliage(blockType)) return false;
 	if (blockType == BLOCK_TYPE_ICE) return false;
-	if (IsRedstoneComponent(blockType)) return false;  // 红石组件不算不透明
+	if (IsRedstoneComponent(blockType)) return false;
+	if (IsCrop(blockType)) return false;
     
 	return true;
 }
@@ -284,7 +323,8 @@ bool IsNonGroundCover(uint8_t type)
 
 bool IsRedstoneComponent(uint8_t blockType)
 {
-	return blockType >= 46 && blockType <= 71;
+	return blockType >= BLOCK_TYPE_REDSTONE_WIRE_DOT && 
+	       blockType <= BLOCK_TYPE_REDSTONE_OBSERVER;
 }
 
 bool IsRedstonePowerSource(uint8_t blockType)
@@ -293,13 +333,10 @@ bool IsRedstonePowerSource(uint8_t blockType)
 	{
 	case BLOCK_TYPE_REDSTONE_TORCH:
 	case BLOCK_TYPE_REDSTONE_BLOCK:
-	case BLOCK_TYPE_LEVER:
+	case BLOCK_TYPE_REDSTONE_LEVER:
 	case BLOCK_TYPE_BUTTON_STONE:
-	// case BLOCK_TYPE_BUTTON_WOOD:
-	// case BLOCK_TYPE_PRESSURE_PLATE_STONE:
-	// case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
 	case BLOCK_TYPE_REPEATER_ON:
-	case BLOCK_TYPE_OBSERVER:
+	case BLOCK_TYPE_REDSTONE_OBSERVER:
 		return true;
 	default:
 		return false;
@@ -310,7 +347,7 @@ bool IsRedstoneConductor(uint8_t blockType)
 {
 	// 实心不透明方块可以传导红石信号
 	return blockType != BLOCK_TYPE_AIR && 
-		   blockType < 50 &&  // 非红石组件
+		   !IsRedstoneComponent(blockType) &&
 		   IsSolid(blockType) && 
 		   IsOpaque(blockType);
 }
@@ -329,19 +366,16 @@ bool IsRedstonePowerable(uint8_t blockType)
 	case BLOCK_TYPE_REDSTONE_TORCH:
 	case BLOCK_TYPE_REDSTONE_TORCH_OFF:
 	case BLOCK_TYPE_REDSTONE_BLOCK:
-	case BLOCK_TYPE_REDSTONE_LAMP:
+	case BLOCK_TYPE_REDSTONE_LAMP_OFF:
 	case BLOCK_TYPE_REDSTONE_LAMP_ON:
 	case BLOCK_TYPE_REPEATER_OFF:
 	case BLOCK_TYPE_REPEATER_ON:
-	case BLOCK_TYPE_LEVER:
+	case BLOCK_TYPE_REDSTONE_LEVER:
 	case BLOCK_TYPE_BUTTON_STONE:
-	// case BLOCK_TYPE_BUTTON_WOOD:
-	// case BLOCK_TYPE_PRESSURE_PLATE_STONE:
-	// case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
-	case BLOCK_TYPE_PISTON:
-	case BLOCK_TYPE_STICKY_PISTON:
+	case BLOCK_TYPE_REDSTONE_PISTON:
+	case BLOCK_TYPE_REDSTONE_STICKY_PISTON:
 	case BLOCK_TYPE_PISTON_HEAD:
-	case BLOCK_TYPE_OBSERVER:
+	case BLOCK_TYPE_REDSTONE_OBSERVER:
 		return true;
 	default:
 		return false;
@@ -354,11 +388,8 @@ bool IsPowerSource(uint8_t blockType)
 	{
 	case BLOCK_TYPE_REDSTONE_BLOCK:
 	case BLOCK_TYPE_REDSTONE_TORCH:
-	case BLOCK_TYPE_LEVER:
+	case BLOCK_TYPE_REDSTONE_LEVER:
 	case BLOCK_TYPE_BUTTON_STONE:
-	// case BLOCK_TYPE_BUTTON_WOOD:
-	// case BLOCK_TYPE_PRESSURE_PLATE_STONE:
-	// case BLOCK_TYPE_PRESSURE_PLATE_WOOD:
 	case BLOCK_TYPE_REPEATER_ON:
 		return true;
 	default:
@@ -369,6 +400,12 @@ bool IsPowerSource(uint8_t blockType)
 bool IsCrop(uint8_t blockType)
 {
 	return blockType >= BLOCK_TYPE_WHEAT_0 && 
+		   blockType <= BLOCK_TYPE_WET_SPONGE;
+}
+
+bool IsUnderwaterProduct(uint8_t blockType)
+{
+	return blockType >= BLOCK_TYPE_FISH_EGG && 
 		   blockType <= BLOCK_TYPE_WET_SPONGE;
 }
 
@@ -412,13 +449,13 @@ bool IsMatureCrop(uint8_t blockType)
 {
 	return blockType == BLOCK_TYPE_WHEAT_7 ||
 		   blockType == BLOCK_TYPE_CARROTS_3 ||
-			blockType == BLOCK_TYPE_POTATOES_3 ||
-			blockType == BLOCK_TYPE_BEETROOTS_3 ||
-			blockType == BLOCK_TYPE_SUGAR_CANE ||
-				blockType == BLOCK_TYPE_CACTUS ||
-					blockType == BLOCK_TYPE_PUMPKIN||
-						blockType == BLOCK_TYPE_MELON||
-							blockType == BLOCK_TYPE_NETHER_WART_3;
+		   blockType == BLOCK_TYPE_POTATOES_3 ||
+		   blockType == BLOCK_TYPE_BEETROOTS_3 ||
+		   blockType == BLOCK_TYPE_SUGAR_CANE ||
+		   blockType == BLOCK_TYPE_CACTUS ||
+		   blockType == BLOCK_TYPE_PUMPKIN||
+		   blockType == BLOCK_TYPE_MELON||
+		   blockType == BLOCK_TYPE_NETHER_WART_3;
 }
 
 void GetPerpendicularDirectionsForLeftAndRight(Direction facing, Direction& leftDir, Direction& rightDir)

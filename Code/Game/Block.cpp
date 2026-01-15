@@ -23,7 +23,6 @@ void Block::SetIndoorLight(uint8_t level)
 }
 
 bool Block::IsSky() const
-
 {
     return (m_flags & BLOCK_BIT_IS_SKY) != 0;
 }

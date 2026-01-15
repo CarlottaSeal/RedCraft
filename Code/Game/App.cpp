@@ -218,17 +218,8 @@ void App::HandleQuitRequested()
 	g_isQuitting = true;
 }
 
-//-----------------------------------------------------------------------------------------------
-// One "frame" of the game.  Generally: Input, Update, Render.  We call this 60+ times per second.
-// #SD1ToDo: Move this function to Game/App.cpp and rename it to  TheApp::RunFrame()
-
 void App::RunFrame()
 {
-	//float timeNow = static_cast<float>(GetCurrentTimeSeconds());
-	//float deltaSeconds = timeNow - m_timeLastFrameStart;
-	////DebuggerPrintf("TimeNow = %.06f\n, TimeNow");
-	//m_timeLastFrameStart = timeNow;
-
 	BeginFrame();
 	Update();
 	Render();
@@ -243,7 +234,7 @@ void App::Update()
 		WorldRestart();
 	}
 	if(g_theGame)
-		g_theGame->Update();
+		g_theGame->Update(g_theGame->m_gameClock->GetDeltaSeconds());
 
 	UpdateCursor();
 }

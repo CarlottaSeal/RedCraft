@@ -1,13 +1,14 @@
 ﻿#include "BlockDefinition.h"
 
+#include <random>
+
 #include "Game.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Core/VertexUtils.hpp"
 #include "Engine/Math/AABB3.hpp"
-#include "Engine/Renderer/VertexBuffer.hpp"
-
 std::vector<BlockDefinition> BlockDefinition::s_blockDefs;
 BlockDefinition const* BlockDefinition::s_blockDefsByType[NUM_BLOCK_TYPES] = { nullptr };
+std::unordered_map<std::string, IntVec2> BlockDefinition::s_itemIconCoords;
 
 extern Game* g_theGame;
 extern Renderer* g_theRenderer;
@@ -28,7 +29,11 @@ BlockDefinition::BlockDefinition(XmlElement const& blockDefElement)
 
     m_indoorLightInfluence = (uint8_t)ParseXmlAttribute(blockDefElement, "indoorLighting", 0);
     m_outdoorLightInfluence = (uint8_t)ParseXmlAttribute(blockDefElement, "outdoorLighting", 0);
-
+	
+	m_droppedItemName = ParseXmlAttribute(blockDefElement, "droppedItem", std::string(""));
+	m_itemIconCoords = ParseXmlAttribute(blockDefElement, "itemIconCoords", m_topSpriteCoords);  // 默认用topSpriteCoords
+	m_itemIconSize = ParseXmlAttribute(blockDefElement, "itemIconSize", 32);
+	
     if (!m_isVisible)
         return;
     //std::vector<Vertex_PCUTBN> verts;
@@ -86,7 +91,6 @@ void BlockDefinition::InitializeBlockDefs()
     XmlElement* blockRootElement = blockDefDoc.RootElement();
     XmlElement* blockFirstElement = blockRootElement->FirstChildElement();
 
-    // ✅ 先加载所有定义到vector
     while (blockFirstElement)
     {
         BlockDefinition blockDef(*blockFirstElement);
@@ -94,7 +98,6 @@ void BlockDefinition::InitializeBlockDefs()
         blockFirstElement = blockFirstElement->NextSiblingElement();
     }
 
-    // ✅ 然后建立指针数组映射
     for (BlockDefinition& def : s_blockDefs)
     {
         if (def.m_name == "Air") s_blockDefsByType[BLOCK_TYPE_AIR] = &def;
@@ -138,26 +141,24 @@ else if (def.m_name == "RedstoneWireDot")    s_blockDefsByType[BLOCK_TYPE_REDSTO
         else if (def.m_name == "RedstoneWireCorner") s_blockDefsByType[BLOCK_TYPE_REDSTONE_WIRE_CORNER] = &def;
         else if (def.m_name == "RedstoneWireCross")  s_blockDefsByType[BLOCK_TYPE_REDSTONE_WIRE_CROSS] = &def;
 
-        // --- Redstone 火把 / 方块 / 灯 ---
         else if (def.m_name == "RedstoneTorch")      s_blockDefsByType[BLOCK_TYPE_REDSTONE_TORCH] = &def;
         else if (def.m_name == "RedstoneTorchOff")   s_blockDefsByType[BLOCK_TYPE_REDSTONE_TORCH_OFF] = &def;
         else if (def.m_name == "RedstoneBlock")      s_blockDefsByType[BLOCK_TYPE_REDSTONE_BLOCK] = &def;
 
-        else if (def.m_name == "RedstoneLamp")       s_blockDefsByType[BLOCK_TYPE_REDSTONE_LAMP] = &def;
+        else if (def.m_name == "RedstoneLamp")       s_blockDefsByType[BLOCK_TYPE_REDSTONE_LAMP_OFF] = &def;
         else if (def.m_name == "RedstoneLampOn")     s_blockDefsByType[BLOCK_TYPE_REDSTONE_LAMP_ON] = &def;
 
-        // --- Redstone 逻辑元件 ---
-        else if (def.m_name == "RepeaterOff")        s_blockDefsByType[BLOCK_TYPE_REPEATER_OFF] = &def;
-        else if (def.m_name == "RepeaterOn")         s_blockDefsByType[BLOCK_TYPE_REPEATER_ON] = &def;
+        else if (def.m_name == "RedstoneRepeaterOff")        s_blockDefsByType[BLOCK_TYPE_REPEATER_OFF] = &def;
+        else if (def.m_name == "RedstoneRepeaterOn")         s_blockDefsByType[BLOCK_TYPE_REPEATER_ON] = &def;
 
-        else if (def.m_name == "Lever")              s_blockDefsByType[BLOCK_TYPE_LEVER] = &def;
-        else if (def.m_name == "StoneButton")        s_blockDefsByType[BLOCK_TYPE_BUTTON_STONE] = &def;
+        else if (def.m_name == "RedstoneLever")              s_blockDefsByType[BLOCK_TYPE_REDSTONE_LEVER] = &def;
+        else if (def.m_name == "RedstoneStoneButton")        s_blockDefsByType[BLOCK_TYPE_BUTTON_STONE] = &def;
 
-        else if (def.m_name == "Piston")             s_blockDefsByType[BLOCK_TYPE_PISTON] = &def;
-        else if (def.m_name == "StickyPiston")       s_blockDefsByType[BLOCK_TYPE_STICKY_PISTON] = &def;
-        else if (def.m_name == "PistonHead")         s_blockDefsByType[BLOCK_TYPE_PISTON_HEAD] = &def;
+        else if (def.m_name == "RedstonePiston")             s_blockDefsByType[BLOCK_TYPE_REDSTONE_PISTON] = &def;
+        else if (def.m_name == "RedstoneStickyPiston")       s_blockDefsByType[BLOCK_TYPE_REDSTONE_STICKY_PISTON] = &def;
+        else if (def.m_name == "RedstonePistonHead")         s_blockDefsByType[BLOCK_TYPE_PISTON_HEAD] = &def;
 
-        else if (def.m_name == "Observer")           s_blockDefsByType[BLOCK_TYPE_OBSERVER] = &def;
+        else if (def.m_name == "RedstoneObserver")           s_blockDefsByType[BLOCK_TYPE_REDSTONE_OBSERVER] = &def;
         //else if (def.m_name == "NoteBlock")          s_blockDefsByType[BLOCK_TYPE_NOTE_BLOCK] = &def;
 
         else if (def.m_name == "Farmland")           s_blockDefsByType[BLOCK_TYPE_FARMLAND] = &def;
@@ -208,7 +209,6 @@ else if (def.m_name == "RedstoneWireDot")    s_blockDefsByType[BLOCK_TYPE_REDSTO
         else if (def.m_name == "Pumpkin") s_blockDefsByType[BLOCK_TYPE_PUMPKIN] = &def;
         else if (def.m_name == "Melon")   s_blockDefsByType[BLOCK_TYPE_MELON]   = &def;
 
-        // --- Sugar cane / 水草 / 珊瑚 / 海绵 ---
         else if (def.m_name == "SugarCane")          s_blockDefsByType[BLOCK_TYPE_SUGAR_CANE] = &def;
 
         else if (def.m_name == "Kelp")               s_blockDefsByType[BLOCK_TYPE_KELP] = &def;
@@ -240,8 +240,14 @@ else if (def.m_name == "RedstoneWireDot")    s_blockDefsByType[BLOCK_TYPE_REDSTO
     	// Fish / Turtle eggs
         else if (def.m_name == "FishEgg")         s_blockDefsByType[BLOCK_TYPE_FISH_EGG] = &def;
         else if (def.m_name == "FishEggHatching") s_blockDefsByType[BLOCK_TYPE_FISH_EGG_HATCHING] = &def;
-
     }
+	for (BlockDefinition& def : s_blockDefs)
+	{
+		if (!def.m_droppedItemName.empty())
+		{
+			s_itemIconCoords[def.m_droppedItemName] = def.m_itemIconCoords;
+		}
+	}
 }
 
 void BlockDefinition::ClearDefinitions()
@@ -277,3 +283,12 @@ BlockDefinition const& BlockDefinition::GetBlockDef(uint8_t const& blockUint)
     return *s_blockDefsByType[blockUint];
 }
 
+IntVec2 BlockDefinition::GetItemIconCoords(std::string const& itemName)
+{
+	auto iter = s_itemIconCoords.find(itemName);
+	if (iter != s_itemIconCoords.end())
+	{
+		return iter->second;
+	}
+	return IntVec2(0, 0); 
+}

@@ -9,7 +9,7 @@ class Sprite;
 class Text;
 class Texture;
 
-struct ItemData
+struct ItemData //TODO
 {
     Texture* texture = nullptr;
     std::string name = "";

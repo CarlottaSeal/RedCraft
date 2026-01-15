@@ -4,7 +4,6 @@
 #include <chrono>
 
 #include "Game.hpp"
-
 #include "Chunk.h"
 #include "ChunkJob.h"
 #include "ChunkUtils.h"
@@ -13,8 +12,14 @@
 #include "Engine/Math/IntVec2.hpp"
 #include "Engine/Renderer/ConstantBuffer.hpp"
 #include "Gameplay/CropSystem.h"
+#include "Gameplay/PlayerInventory.h"
 #include "Gameplay/RedstoneSimulator.h"
+#include "Gameplay/WorldConfig.h"
 #include "ThirdParty/Noise/SmoothNoise.hpp"
+#include "UI/GameUIManager.h"
+#include "Weather/CloudSystem.h"
+#include "Weather/MediumSystem.h"
+#include "Weather/WeatherParticleRenderer.h"
 
 World::World(Game* owner)
     :m_owner(owner)
@@ -26,6 +31,10 @@ World::World(Game* owner)
 
     m_redstoneSimulator = new RedstoneSimulator(this);
     m_cropSystem = new CropSystem(this);
+    m_weatherSystem = new WeatherSystem(this);
+    m_mediumSystem = new MediumSystem(this);
+    m_cloudSystem = new CloudSystem(this);
+    m_weatherParticleRenderer = new WeatherParticleRenderer(m_weatherSystem);
 }
 
 World::~World()
@@ -51,16 +60,33 @@ World::~World()
         delete m_cropSystem;
         m_cropSystem = nullptr;
     }
+    if (m_weatherSystem) { delete m_weatherSystem; m_weatherSystem = nullptr; }
+    if (m_mediumSystem)  { delete m_mediumSystem;  m_mediumSystem = nullptr; }
+    if (m_cloudSystem)   { delete m_cloudSystem;   m_cloudSystem = nullptr; }
+    if (m_weatherParticleRenderer) {delete m_weatherParticleRenderer;m_weatherParticleRenderer = nullptr;}
 }
 
 void World::Update(float deltaSeconds)
 {
-    // if (g_theInput->ShouldIgnoreMouseInput())
-    //     return;
+// #ifdef _DEBUG
+//     static int frameCount = 0;
+//     if (++frameCount % 60 == 0) 
+//     {
+//         if (g_theSaveSystem)
+//         {
+//             size_t stackSize = g_theSaveSystem->GetStackSize();  
+//             if (stackSize > 0)
+//             {
+//                 ERROR_RECOVERABLE(Stringf("Context stack is NOT empty! Size: %d", 
+//                     (int)stackSize));
+//             }
+//         }
+//     }
+// #endif
     
     //UpdateVisibleChunks();
     UpdateAccelerateTime();
-    UpdateTypeToPlace();
+    //UpdateTypeToPlace();
     UpdateDiggingAndPlacing(deltaSeconds);
     // Chunk* chunkToUpdate = GetChunkFromPlayerCameraPosition(m_owner->m_player->m_position);
     // if(chunkToUpdate)
@@ -100,35 +126,52 @@ void World::Update(float deltaSeconds)
     UpdateWorldConstants();
     ProcessDirtyLighting();
 
-    if (m_redstoneSimulator)
-        m_redstoneSimulator->Update(deltaSeconds);
-    if (m_cropSystem)
-        m_cropSystem->Update(deltaSeconds);
+    float timeScale = m_worldTimeScale;
+    if (m_isTimeAccelerated)
+    {
+        timeScale *= TIME_ACCELERATION_MULTIPLIER;
+    }
+    float scaledDeltaSeconds = deltaSeconds * timeScale;
+    if (m_redstoneSimulator) m_redstoneSimulator->Update(scaledDeltaSeconds);
+    if (m_cropSystem)        m_cropSystem->Update(scaledDeltaSeconds);
+    if (m_weatherSystem) //合并这些啊啊啊啊
+    {
+        m_weatherSystem->Update(scaledDeltaSeconds);
+        if (m_weatherParticleRenderer)
+            m_weatherParticleRenderer->Update(scaledDeltaSeconds, 
+                                              m_owner->m_player->m_worldCamera);
+    }
+    if (m_mediumSystem)      m_mediumSystem->Update(scaledDeltaSeconds);
+    if (m_cloudSystem)       m_cloudSystem->Update(scaledDeltaSeconds);
+
     RebuildDirtyMeshes(2);
 }
 
 void World::Render() const
 {
     BindWorldConstansBuffer();
+    
     g_theRenderer->BindShader(m_worldShader);
     g_theRenderer->SetModelConstants();
     g_theRenderer->BindTexture(&m_owner->m_spriteSheet->GetTexture());
-    // 阶段 1: 渲染所有不透明方块 (建立深度缓冲)
+    g_theRenderer->SetRasterizerMode(RasterizerMode::SOLID_CULL_BACK);
+    if (m_cloudSystem) 
+    {
+        m_cloudSystem->Render();
+    }
     g_theRenderer->SetDepthMode(DepthMode::READ_WRITE_LESS_EQUAL);  
-    g_theRenderer->SetBlendMode(BlendMode::OPAQUE);     
+    g_theRenderer->SetBlendMode(BlendMode::OPAQUE);
     for (auto& chunkPair : m_activeChunks)
     {
         chunkPair.second->RenderOpaque();  
     }
-    // 阶段 2: 渲染所有透明方块 (只读深度，混合颜色)
-    g_theRenderer->SetDepthMode(DepthMode::READ_ONLY_LESS_EQUAL); 
-    g_theRenderer->SetBlendMode(BlendMode::ALPHA);             
     
-    for (auto& chunkPair : m_activeChunks)
+    RenderTransparent();
+    //TODO: 这两个都应该移到WeatherSystem！->budui云得先渲。
+    if (m_weatherParticleRenderer)
     {
-        chunkPair.second->RenderTransparent();  // 渲染透明几何体
+        m_weatherParticleRenderer->Render();
     }
-    
     if (m_highlightedBlock.m_isValid)
     {
         g_theRenderer->SetDepthMode(DepthMode::READ_WRITE_LESS_EQUAL); 
@@ -564,12 +607,10 @@ void World::UpdateDayNightCycle(float deltaSeconds)
 
 Rgba8 World::CalculateSkyColor() const
 {
-    float t = GetTimeOfDay(); // [0, 1)
-    
+    float t = GetTimeOfDay(); 
     // 计算太阳高度角 (-1到1，0是地平线，1是正午，-1是午夜)
     float sunAngle = cosf((t - 0.5f) * 2.0f * PI);
     
-    // V3版本：增加更多暖色调，减少单一的蓝白色
     const Rgba8 deepNight(20, 25, 50);         // 深夜蓝
     const Rgba8 lateNight(25, 30, 55);         // 后半夜
     const Rgba8 preDawn(60, 50, 90);           // 黎明前紫蓝（增加红色）
@@ -585,7 +626,6 @@ Rgba8 World::CalculateSkyColor() const
 
     Rgba8 color;
     
-    // 时间分段
     if (t < 0.08f) 
     { 
         // 00:00 - 01:55: 深夜
@@ -663,20 +703,16 @@ Rgba8 World::CalculateSkyColor() const
         float k = (t - 0.92f) / 0.08f;
         color = InterpolateRgba8(earlyNight, deepNight, SmoothStep3(k));
     }
-
     // 基于太阳高度的自然亮度调整
     float brightness = GetClamped(sunAngle * 0.5f + 0.7f, 0.35f, 1.05f);
-    
     // 日出日落时增强颜色饱和度
     if ((t > 0.22f && t < 0.28f) || (t > 0.72f && t < 0.78f))
     {
         brightness *= 1.15f; // 日出日落时增强15%，让暖色更明显
     }
-    
     color.r = (unsigned char)GetClamped(color.r * brightness, 0.0f, 255.0f);
     color.g = (unsigned char)GetClamped(color.g * brightness, 0.0f, 255.0f);
     color.b = (unsigned char)GetClamped(color.b * brightness, 0.0f, 255.0f);
-
     return color;
 }
 
@@ -925,29 +961,32 @@ GameRaycastResult3D World::RaycastVsBlocks(const Vec3& start, const Vec3& direct
     
     while (currentT < maxDistance)
     {
-        if (iter.IsValid() && IsSolid(iter.GetBlock()->m_typeIndex))
+        if (iter.IsValid())
         {
-            result.m_didImpact = true;
-            result.m_impactDist = currentT;
-            result.m_impactPos = start + rayDir * currentT;
-            
-            switch (lastFace)
+            if (IsSolid(iter.GetBlock()->m_typeIndex) || IsRedstoneComponent(iter.GetBlock()->m_typeIndex))
             {
-            case DIRECTION_EAST:  result.m_impactNormal = Vec3(-1, 0, 0); break;
-            case DIRECTION_WEST:  result.m_impactNormal = Vec3(1, 0, 0); break;
-            case DIRECTION_NORTH: result.m_impactNormal = Vec3(0, -1, 0); break;
-            case DIRECTION_SOUTH: result.m_impactNormal = Vec3(0, 1, 0); break;
-            case DIRECTION_UP:    result.m_impactNormal = Vec3(0, 0, -1); break;
-            case DIRECTION_DOWN:  result.m_impactNormal = Vec3(0, 0, 1); break;
-            default:              result.m_impactNormal = -rayDir; break;
+                result.m_didImpact = true;
+                result.m_impactDist = currentT;
+                result.m_impactPos = start + rayDir * currentT;
+            
+                switch (lastFace)
+                {
+                case DIRECTION_EAST:  result.m_impactNormal = Vec3(-1, 0, 0); break;
+                case DIRECTION_WEST:  result.m_impactNormal = Vec3(1, 0, 0); break;
+                case DIRECTION_NORTH: result.m_impactNormal = Vec3(0, -1, 0); break;
+                case DIRECTION_SOUTH: result.m_impactNormal = Vec3(0, 1, 0); break;
+                case DIRECTION_UP:    result.m_impactNormal = Vec3(0, 0, -1); break;
+                case DIRECTION_DOWN:  result.m_impactNormal = Vec3(0, 0, 1); break;
+                default:              result.m_impactNormal = -rayDir; break;
+                }
+            
+                result.m_hitBlock = iter;
+                result.m_hitFace = lastFace;
+                result.m_hitLocalCoords = iter.GetLocalCoords();
+                result.m_hitGlobalCoords = iter.GetGlobalCoords();
+            
+                return result;
             }
-            
-            result.m_hitBlock = iter;
-            result.m_hitFace = lastFace;
-            result.m_hitLocalCoords = iter.GetLocalCoords();
-            result.m_hitGlobalCoords = iter.GetGlobalCoords();
-            
-            return result;
         }
         
         // 移动到下一个方块
@@ -1039,6 +1078,33 @@ void World::OnBlockStateChanged(const BlockIterator& block, uint8_t oldType, uin
 const std::map<IntVec2, Chunk*>& World::GetActiveChunks()
 {
     return m_activeChunks;
+}
+
+std::string World::GetWorldTypeName() const
+{
+    return GetWorldTypeNameStatic(m_owner->m_selectedWorldType);
+}
+
+std::string World::GetSaveSubdirectory() const
+{
+    std::string worldTypeName = GetWorldTypeName();
+    if (worldTypeName.empty())
+    {
+        ERROR_RECOVERABLE("worldTypeName is empty!");
+        worldTypeName = "Normal";  
+    }
+    std::string path;
+    if (!m_worldName.empty())
+        path = "Saves/" + worldTypeName + "/" + m_worldName;
+    else
+        path = "Saves/" + worldTypeName;
+    
+    if (path.empty())
+    {
+        ERROR_RECOVERABLE("Generated path is empty!");
+        return "Saves/Normal";  
+    }
+    return path;
 }
 
 bool World::RegenerateSingleNearestDirtyChunk()
@@ -1294,7 +1360,7 @@ void World::ForceDeactivateAllChunks()
     }
 }
 
-void World::SaveAllModifiedChunks()
+void World::SaveAllChunks()
 {
     for (auto& [coords, chunk] : m_activeChunks)
     {
@@ -1344,27 +1410,41 @@ void World::ActivateProcessedChunk(Chunk* chunk)
 void World::ProcessCompletedJobs()
 {
     std::vector<Job*> completedJobs = g_theJobSystem->RetrieveCompletedJobs();
+    
+    std::vector<Job*> chunkGenerationJobs;
+    chunkGenerationJobs.reserve(completedJobs.size());
+    for (Job* job : completedJobs)
+    {
+        ChunkSortTransparencyJob* sortJob = dynamic_cast<ChunkSortTransparencyJob*>(job);
+        if (sortJob != nullptr)
+        {
+            delete job;
+        }
+        else
+        {
+            // 这是 chunk 生成/加载 job，保留处理
+            chunkGenerationJobs.push_back(job);
+        }
+    }
     // 第一步：批量激活所有chunk，但先不连接邻居
     std::vector<Chunk*> newlyActivatedChunks;
     m_generatingChunksCount = 0;
-    for (Job* job : completedJobs)
+    for (Job* job : chunkGenerationJobs)
     {
         Chunk* chunk = dynamic_cast<ChunkJob*>(job)->m_chunk;   
         if (chunk)
         {
             IntVec2 coords = chunk->GetThisChunkCoords();
-            
-            std::lock_guard<std::mutex> lock(m_processingChunksMutex);
-            m_processingChunks.erase(coords);
+            {
+                std::lock_guard<std::mutex> lock(m_processingChunksMutex);
+                m_processingChunks.erase(coords);
+            }
             
             m_activeChunks[coords] = chunk;
             chunk->SetState(ChunkState::ACTIVE);
             
             newlyActivatedChunks.push_back(chunk);
-            
-            //DebuggerPrintf("Activating Chunk (%d, %d)\n", coords.x, coords.y);
         }
-        
         delete job;
     }
     // 第二步：现在所有新chunk都在activeChunks中了，批量连接邻居
@@ -1444,17 +1524,31 @@ void World::SubmitNewActivateJobs()
 		m_processingChunks[coords] = chunk;
 
 		std::string filename = Chunk::MakeChunkFilename(coords);
-		if (g_theSaveSystem && g_theSaveSystem->FileExists(filename))
-		{
-			chunk->SetState(ChunkState::QUEUED_FOR_LOADING);
-			g_theJobSystem->AddPendingJob(new LoadChunkJob(chunk));
-		}
-		else
-		{
-			chunk->SetState(ChunkState::QUEUED_FOR_GENERATION);
-			g_theJobSystem->AddPendingJob(new GenerateChunkJob(chunk));
-		}
-
+	    bool fileExists = false;
+	    if (g_theSaveSystem)
+	    {
+	        std::string worldSaveDir = GetSaveSubdirectory();
+	        if (!worldSaveDir.empty())
+	        {
+	            g_theSaveSystem->PushSaveContext(worldSaveDir);
+	            fileExists = g_theSaveSystem->FileExists(filename);
+	            g_theSaveSystem->PopSaveContext(); 
+	        }
+	        else
+	        {
+	            fileExists = g_theSaveSystem->FileExists(filename);
+	        }
+	    }
+	    if (fileExists)
+	    {
+	        chunk->SetState(ChunkState::QUEUED_FOR_LOADING);
+	        g_theJobSystem->AddPendingJob(new LoadChunkJob(chunk));
+	    }
+	    else
+	    {
+	        chunk->SetState(ChunkState::QUEUED_FOR_GENERATION);
+	        g_theJobSystem->AddPendingJob(new GenerateChunkJob(chunk));
+	    }
 		currentJobCount++;
 	}
 }
@@ -1636,18 +1730,74 @@ void World::BindWorldConstansBuffer() const
     constants.CameraWorldPosition[0] = m_owner->m_player->m_worldCamera.GetPosition().x;
     constants.CameraWorldPosition[1] = m_owner->m_player->m_worldCamera.GetPosition().y;
     constants.CameraWorldPosition[2] = m_owner->m_player->m_worldCamera.GetPosition().z;
+    
+    Rgba8 finalSkyColor = m_skyColor;
+    Rgba8 finalOutdoorColor = m_outdoorLightColor;
+    
+    if (m_weatherSystem)
+    {
+        float skyDarkening = m_weatherSystem->GetSkyDarkening();
+        float lightReduction = m_weatherSystem->GetOutdoorLightReduction();
+        float lightning = m_weatherSystem->GetLightningStrength();
+        
+        // 天气变暗
+        finalSkyColor.r = (unsigned char)(finalSkyColor.r * (1.0f - skyDarkening));
+        finalSkyColor.g = (unsigned char)(finalSkyColor.g * (1.0f - skyDarkening));
+        finalSkyColor.b = (unsigned char)(finalSkyColor.b * (1.0f - skyDarkening));
+        
+        finalOutdoorColor.r = (unsigned char)(finalOutdoorColor.r * (1.0f - lightReduction));
+        finalOutdoorColor.g = (unsigned char)(finalOutdoorColor.g * (1.0f - lightReduction));
+        finalOutdoorColor.b = (unsigned char)(finalOutdoorColor.b * (1.0f - lightReduction));
+        
+        // 闪电照亮
+        if (lightning > 0.0f)
+        {
+            finalSkyColor.r = (unsigned char)Interpolate((float)finalSkyColor.r, 255.0f, lightning);
+            finalSkyColor.g = (unsigned char)Interpolate((float)finalSkyColor.g, 255.0f, lightning);
+            finalSkyColor.b = (unsigned char)Interpolate((float)finalSkyColor.b, 255.0f, lightning);
+            
+            finalOutdoorColor.r = (unsigned char)Interpolate((float)finalOutdoorColor.r, 255.0f, lightning);
+            finalOutdoorColor.g = (unsigned char)Interpolate((float)finalOutdoorColor.g, 255.0f, lightning);
+            finalOutdoorColor.b = (unsigned char)Interpolate((float)finalOutdoorColor.b, 255.0f, lightning);
+        }
+    }
+    
+    // 应用介质效果（水下、岩浆、雾）
+    float fogNear = (float)(CHUNK_ACTIVATION_RANGE - 2 * CHUNK_SIZE_X) / 2.0f;
+    float fogFar = (float)(CHUNK_ACTIVATION_RANGE - 2 * CHUNK_SIZE_X);
+    
+    if (m_mediumSystem)
+    {
+        MediumProperties mediumProps = m_mediumSystem->GetCurrentMediumProperties();
+        
+        if (mediumProps.density > 0.0f)
+        {
+            // 混合介质色调
+            float blendFactor = mediumProps.density;
+            finalSkyColor.r = (unsigned char)Interpolate((float)finalSkyColor.r, (float)mediumProps.tintColor.r, blendFactor);
+            finalSkyColor.g = (unsigned char)Interpolate((float)finalSkyColor.g, (float)mediumProps.tintColor.g, blendFactor);
+            finalSkyColor.b = (unsigned char)Interpolate((float)finalSkyColor.b, (float)mediumProps.tintColor.b, blendFactor);
+            
+            // 使用介质的雾距离
+            fogNear = mediumProps.fogNearDistance;
+            fogFar = mediumProps.fogFarDistance;
+        }
+    }
+    
     float skyColor[4];
-    m_skyColor.GetAsFloats(skyColor);
+    finalSkyColor.GetAsFloats(skyColor);
     constants.SkyColor[0] = skyColor[0];
     constants.SkyColor[1] = skyColor[1];
     constants.SkyColor[2] = skyColor[2];
     constants.SkyColor[3] = skyColor[3];
+    
     float outdoorColor[4];
-    m_outdoorLightColor.GetAsFloats(outdoorColor);
+    finalOutdoorColor.GetAsFloats(outdoorColor);
     constants.OutdoorLightColor[0] = outdoorColor[0];
     constants.OutdoorLightColor[1] = outdoorColor[1];
     constants.OutdoorLightColor[2] = outdoorColor[2];
     constants.OutdoorLightColor[3] = outdoorColor[3];
+    
     float indoorColor[4];
     m_indoorLightColor.GetAsFloats(indoorColor);
     constants.IndoorLightColor[0] = indoorColor[0];
@@ -1655,14 +1805,99 @@ void World::BindWorldConstansBuffer() const
     constants.IndoorLightColor[2] = indoorColor[2];
     constants.IndoorLightColor[3] = indoorColor[3];
 
-    constants.FogNearDistance = (float)(CHUNK_ACTIVATION_RANGE - 2 * CHUNK_SIZE_X) / 2.0f;
-    constants.FogFarDistance = (float)(CHUNK_ACTIVATION_RANGE - 2 * CHUNK_SIZE_X);
-    //constants.FogNearDistance = 200.0f;   // 从 200 开始出现雾
-    //constants.FogFarDistance = 300.0f;  
+    constants.FogNearDistance = fogNear;
+    constants.FogFarDistance = fogFar;
     constants.FogMaxAlpha = 1.0f;
 
     g_theRenderer->CopyCPUToGPU(&constants, sizeof(WorldConstants), m_worldConstantBuffer);
     g_theRenderer->BindConstantBuffer(k_worldConstantsSlot, m_worldConstantBuffer);
+}
+
+void World::RenderTransparent() const
+{
+    m_sortFrameCounter++;
+    bool shouldSort = (m_sortFrameCounter % SORT_CHUNK_FREQUENCY == 0);
+    
+    Vec3 cameraPos = m_owner->m_player->m_position;
+    std::vector<Chunk*> chunksWithTransparency;
+    chunksWithTransparency.reserve(m_activeChunks.size());
+    for (auto& chunkPair : m_activeChunks)
+    {
+        Chunk* chunk = chunkPair.second;
+        if (!chunk->m_transparentVertices.empty())
+        {
+            chunksWithTransparency.push_back(chunk);
+        }
+    }
+    if (!shouldSort)
+    {
+        g_theRenderer->SetDepthMode(DepthMode::READ_ONLY_LESS_EQUAL); 
+        g_theRenderer->SetBlendMode(BlendMode::ALPHA);
+        
+        for (Chunk* chunk : chunksWithTransparency)
+        {
+            chunk->RenderTransparentPreSorted(cameraPos);
+        }
+        return;
+    }
+    if (!chunksWithTransparency.empty())
+    {
+        std::sort(chunksWithTransparency.begin(), chunksWithTransparency.end(), 
+            [&cameraPos](const Chunk* a, const Chunk* b) -> bool 
+            {
+                Vec3 centerA = a->m_bounds.GetCenter();
+                Vec3 centerB = b->m_bounds.GetCenter();
+                return (centerA - cameraPos).GetLengthSquared() > 
+                       (centerB - cameraPos).GetLengthSquared();
+            });
+        std::vector<Chunk*> nearbyChunks;
+        for (Chunk* chunk : chunksWithTransparency)
+        {
+            Vec3 diff = cameraPos - chunk->m_bounds.GetCenter();
+            float distSq = Vec2(diff.x, diff.y).GetLengthSquared();
+            if (distSq < MAX_SORT_DISTANCE)
+            {
+                nearbyChunks.push_back(chunk);
+            }
+        }
+        
+        int numChunksToSort = MinI((int)chunksWithTransparency.size(), MAX_SORTED_CHUNKS);
+        
+        std::vector<ChunkSortTransparencyJob*> sortJobs;
+        sortJobs.reserve(numChunksToSort);
+        
+        for (int i = 0; i < numChunksToSort; i++)
+        {
+            ChunkSortTransparencyJob* job = new ChunkSortTransparencyJob(
+                chunksWithTransparency[i], cameraPos);
+            g_theJobSystem->AddPendingJob(job);
+        }
+        const int MAX_SPIN_COUNT = 1000;
+        int spinCount = 0;
+        
+        g_theRenderer->SetDepthMode(DepthMode::READ_ONLY_LESS_EQUAL); 
+        g_theRenderer->SetBlendMode(BlendMode::ALPHA);
+        for (size_t i = 0; i < chunksWithTransparency.size(); i++)
+        {
+            Chunk* chunk = chunksWithTransparency[i];
+            
+            if (i < (size_t)numChunksToSort)
+            {
+                chunk->RenderTransparentPreSorted(cameraPos);
+            }
+            else
+            {
+                if (chunk->m_transparentVertexBuffer != nullptr)
+                {
+                    g_theRenderer->BindVertexBuffer(chunk->m_transparentVertexBuffer);
+                    g_theRenderer->BindIndexBuffer(chunk->m_transparentIndexBuffer);
+                    g_theRenderer->DrawIndexBuffer(chunk->m_transparentVertexBuffer, 
+                                                   chunk->m_transparentIndexBuffer, 
+                                                   (unsigned int)chunk->m_transparentIndices.size());
+                }
+            }
+        }
+    }
 }
 
 void World::ToggleDebugMode()
@@ -1722,7 +1957,6 @@ void World::UpdateDiggingAndPlacing(float deltaSeconds)
     Vec3 cameraUp;
     m_owner->m_player->m_gameCamera->GetOrientation().GetAsVectors_IFwd_JLeft_KUp(cameraForward, cameraLeft, cameraUp);
     float maxRaycastDistance = 10.0f; 
-    
     m_currentRaycast = RaycastVsBlocks(cameraPos, cameraForward, maxRaycastDistance);
 
     if (m_currentRaycast.m_didImpact)
@@ -1730,6 +1964,23 @@ void World::UpdateDiggingAndPlacing(float deltaSeconds)
         m_highlightedBlock.m_isValid = true;
         m_highlightedBlock.m_worldCoords = m_currentRaycast.m_hitGlobalCoords;
         m_highlightedBlock.m_hitFace = m_currentRaycast.m_hitFace;
+        uint8_t blockType = GetBlockAtWorldCoords(m_highlightedBlock.m_worldCoords.x,
+                                                  m_highlightedBlock.m_worldCoords.y,
+                                                  m_highlightedBlock.m_worldCoords.z).m_typeIndex;
+        if (blockType == BLOCK_TYPE_REDSTONE_OBSERVER ||
+         blockType == BLOCK_TYPE_REDSTONE_PISTON ||
+         blockType == BLOCK_TYPE_REDSTONE_STICKY_PISTON)
+        {
+            if (g_theInput->IsKeyDown(KEYCODE_F2))
+            {
+                IntVec3 globalPos = m_currentRaycast.m_hitBlock.GetGlobalCoords();
+                if (g_theGameUIManager)
+                {
+                    g_theGameUIManager->OpenRedstoneConfig(globalPos);
+                }
+                return;
+            }
+        }
     }
     
     if (g_theInput->WasKeyJustPressed(KEYCODE_LEFT_MOUSE))
@@ -1758,7 +2009,7 @@ void World::UpdateDiggingAndPlacing(float deltaSeconds)
                 uint8_t blockType = targetBlock->m_typeIndex;
                 
                 // 红石组件交互
-                if (blockType == BLOCK_TYPE_LEVER)
+                if (blockType == BLOCK_TYPE_REDSTONE_LEVER)
                 {
                     m_redstoneSimulator->ToggleLever(m_currentRaycast.m_hitBlock);
                     return;  // 不放置方块
@@ -1786,8 +2037,12 @@ void World::UpdateDiggingAndPlacing(float deltaSeconds)
                 {
                     Chunk* chunk = placeIter.GetChunk();
                     IntVec3 placeCoords = placeIter.GetLocalCoords();
-                
-                    chunk->PlaceBlock(placeCoords, m_typeToPlace);
+                    //chunk->PlaceBlock(placeCoords, m_typeToPlace);
+
+                    PlayerInventory* inventory = m_owner->m_player->GetInventory();
+                    Item const& selectedItem = inventory->GetSelectedItem();
+                    uint8_t blockTypeToPlace = GetBlockTypeFromItem(StringToItemType(selectedItem.GetName()));
+                    chunk->PlaceBlock(placeCoords, blockTypeToPlace);
                 }
             }
         }
@@ -1804,6 +2059,31 @@ void World::UpdateAccelerateTime()
     {
         m_isTimeAccelerated = false;
     }
+//#ifdef _DEBUG
+    if (m_weatherSystem)
+    {
+        if (g_theInput->WasKeyJustPressed('L'))
+        {
+            m_weatherSystem->SetWeather(WeatherType::CLEAR, 3.0f);
+            g_theDevConsole->AddLine(Rgba8::CYAN, "Weather: CLEAR");
+        }
+        if (g_theInput->WasKeyJustPressed('K'))
+        {
+            m_weatherSystem->SetWeather(WeatherType::RAIN, 3.0f);
+            g_theDevConsole->AddLine(Rgba8::CYAN, "Weather: RAIN");
+        }
+        if (g_theInput->WasKeyJustPressed('J'))
+        {
+            m_weatherSystem->SetWeather(WeatherType::THUNDERSTORM, 3.0f);
+            g_theDevConsole->AddLine(Rgba8::CYAN, "Weather: THUNDERSTORM");
+        }
+        if (g_theInput->WasKeyJustPressed('H'))
+        {
+            m_weatherSystem->SetWeather(WeatherType::SNOW, 3.0f);
+            g_theDevConsole->AddLine(Rgba8::CYAN, "Weather: SNOW");
+        }
+    }
+//#endif
 }
 
 void World::UpdateVisibleChunks()

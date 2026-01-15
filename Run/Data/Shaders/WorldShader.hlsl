@@ -80,12 +80,22 @@ float4 PixelMain(v2p_t input) : SV_TARGET
     float indoorInfluence = input.color.g;
     float directionShade = input.color.b;
     
-    float3 outdoorContribution = outdoorInfluence * OutdoorLightColor.rgb;
-    float3 indoorContribution = indoorInfluence * IndoorLightColor.rgb;
+    float3 litColor;
     
-    float3 combinedLight = DiminishingAdd(outdoorContribution, indoorContribution);
-    
-    float3 litColor = texColor.rgb * combinedLight * directionShade;
+    if (directionShade < 0.2f && outdoorInfluence > 0.3f)
+    {
+        // Tint模式：这是红色tint
+        litColor = texColor.rgb * input.color.rgb;
+    }
+    else
+    {
+        float3 outdoorContribution = outdoorInfluence * OutdoorLightColor.rgb;
+        float3 indoorContribution = indoorInfluence * IndoorLightColor.rgb;
+        
+        float3 combinedLight = DiminishingAdd(outdoorContribution, indoorContribution);
+        
+        litColor = texColor.rgb * combinedLight * directionShade;
+    }
     
     litColor *= ModelColor.rgb;
     

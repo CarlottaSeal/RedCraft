@@ -21,9 +21,9 @@ constexpr float FLY_SPEED = 10.9f;             // Creative fly speed (blocks/s)
 
 constexpr float WATER_GRAVITY_MULTIPLIER = 0.2f;  // Gravity reduction in water
 constexpr float WATER_DRAG = 0.8f;                // Velocity damping in water
-constexpr float AIR_DRAG = 2.f;                 // Air resistance
+constexpr float AIR_DRAG = 2.f;                   // Air resistance
 constexpr float GROUND_DRAG = 15.f;               
-constexpr float GROUND_ACCELERATION = 64.f;                
+constexpr float GROUND_ACCELERATION = 64.f;
 
 constexpr float CAMERA_OVER_SHOULDER_DIST = 4.f;          
 
@@ -43,6 +43,9 @@ StepResult CheckStepUp(const Vec3& desiredPos,
 
 // Apply friction to horizontal velocity
 Vec3 ApplyFriction(const Vec3& velocity, float friction, float deltaSeconds);
+
+// Apply friction to all three axes (for flying/noclip modes)
+Vec3 ApplyFriction3D(const Vec3& velocity, float friction, float deltaSeconds);
 
 // Apply acceleration with max speed limit
 Vec3 Accelerate(const Vec3& velocity, const Vec3& wishDir, float wishSpeed, 

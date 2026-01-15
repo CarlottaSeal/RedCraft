@@ -78,7 +78,11 @@ constexpr uint8_t BLOCK_BIT_IS_LIGHT_DIRTY = 0x02;  // 第1位
 constexpr uint8_t BLOCK_BIT_IS_OPAQUE      = 0x04;  // 第2位
 constexpr uint8_t BLOCK_BIT_IS_SOLID       = 0x08;  // 第3位
 constexpr uint8_t BLOCK_BIT_IS_VISIBLE     = 0x10;  // 第4位
-constexpr uint8_t BLOCK_BIT_IS_REDSTONE_DIRTY = 0x20; 
+constexpr uint8_t BLOCK_BIT_IS_REDSTONE_DIRTY = 0x20;
+
+
+static constexpr int TOTAL_EQUIPMENT_SLOTS = 18;
+static const int SLOTS_PER_ROW = 9;
 
 enum BlockType : uint8_t
 {
@@ -127,20 +131,20 @@ enum BlockType : uint8_t
 	BLOCK_TYPE_REDSTONE_TORCH_OFF = 40,
 	BLOCK_TYPE_REDSTONE_BLOCK = 41,
 	
-	BLOCK_TYPE_REDSTONE_LAMP = 42,
+	BLOCK_TYPE_REDSTONE_LAMP_OFF = 42,
 	BLOCK_TYPE_REDSTONE_LAMP_ON = 43,
 	
 	BLOCK_TYPE_REPEATER_OFF = 44,
 	BLOCK_TYPE_REPEATER_ON = 45,
 	
-	BLOCK_TYPE_LEVER = 46,
+	BLOCK_TYPE_REDSTONE_LEVER = 46,
 	BLOCK_TYPE_BUTTON_STONE = 47,
 	
-	BLOCK_TYPE_PISTON = 48,
-	BLOCK_TYPE_STICKY_PISTON = 49,
+	BLOCK_TYPE_REDSTONE_PISTON = 48,
+	BLOCK_TYPE_REDSTONE_STICKY_PISTON = 49,
 	BLOCK_TYPE_PISTON_HEAD = 50,
 	
-	BLOCK_TYPE_OBSERVER = 51,
+	BLOCK_TYPE_REDSTONE_OBSERVER = 51,
 	
 	// 农田
 	BLOCK_TYPE_FARMLAND = 52,
@@ -292,3 +296,220 @@ struct WorldConstants
 	float Padding3;
 };
 static constexpr int k_worldConstantsSlot = 5;
+
+
+enum ItemType : uint8_t
+{
+	NONE = 0,
+    
+	STONE = 1,
+	DIRT = 2,
+	SAND = 3,
+	GRASS = 4,
+	COBBLESTONE = 5,
+	GLOWSTONE = 6,
+	WATER = 7, //Debugging building world
+    
+	OAK_LOG = 10,
+	OAK_PLANKS = 11,
+	BIRCH_LOG = 12,
+	BIRCH_PLANKS = 13,
+    
+	REDSTONE_LINE = 20,
+	REDSTONE_TORCH = 21,
+	REDSTONE_BLOCK = 22,
+	REDSTONE_PISTON = 23,
+	REDSTONE_OBSERVER = 24,
+	REDSTONE_LEVER,
+	REDSTONE_LAMP,
+	REDSTONE_REPEATER,
+    
+	WHEAT,
+	CARROT,
+	POTATO ,
+	BEETROOT,
+    
+	BONEMEAL,
+    
+	NUM_TYPES = 128
+};
+
+inline ItemType StringToItemType(std::string const& name)
+{
+	if (name.empty()) return ItemType::NONE;
+    
+	if (name == "Stone") return ItemType::STONE;
+	if (name == "Dirt") return ItemType::DIRT;
+	if (name == "Sand") return ItemType::SAND;
+	if (name == "Grass") return ItemType::GRASS;
+	if (name == "Cobblestone") return ItemType::COBBLESTONE;
+	if (name == "Glowstone") return ItemType::GLOWSTONE;
+	if (name == "Water") return ItemType::WATER;
+    
+	if (name == "OakLog") return ItemType::OAK_LOG;
+	if (name == "OakPlanks") return ItemType::OAK_PLANKS;
+	if (name == "BirchLog") return ItemType::BIRCH_LOG;
+	if (name == "BirchPlanks") return ItemType::BIRCH_PLANKS;
+    
+	if (name == "RedstoneLine") return ItemType::REDSTONE_LINE;
+	if (name == "RedstoneTorch") return ItemType::REDSTONE_TORCH;
+	if (name == "RedstoneBlock") return ItemType::REDSTONE_BLOCK;
+	if (name == "RedstonePiston") return ItemType::REDSTONE_PISTON;
+	if (name == "RedstoneLever") return ItemType::REDSTONE_LEVER;
+	if (name == "RedstoneLamp") return ItemType::REDSTONE_LAMP;
+	if (name == "RedstoneRepeater") return ItemType::REDSTONE_REPEATER;
+	if (name == "RedstoneObserver") return ItemType::REDSTONE_OBSERVER;
+    
+	if (name == "Wheat") return ItemType::WHEAT;
+	if (name == "Carrot") return ItemType::CARROT;
+	if (name == "Potato") return ItemType::POTATO;
+	if (name == "Beetroot") return ItemType::BEETROOT;
+    
+	if (name == "Bonemeal") return ItemType::BONEMEAL;
+    
+	return ItemType::NONE;
+}
+
+inline uint8_t GetBlockTypeFromItem(ItemType itemType)
+{
+    switch (itemType)
+    {
+    case ItemType::STONE: return BLOCK_TYPE_STONE;
+    case ItemType::DIRT: return BLOCK_TYPE_DIRT;
+    case ItemType::SAND: return BLOCK_TYPE_SAND;
+    case ItemType::GRASS: return BLOCK_TYPE_GRASS;
+    case ItemType::COBBLESTONE: return BLOCK_TYPE_COBBLESTONE;
+    case ItemType::GLOWSTONE: return BLOCK_TYPE_GLOWSTONE;
+    case ItemType::WATER: return BLOCK_TYPE_WATER;
+    
+    case ItemType::OAK_LOG: return BLOCK_TYPE_OAK_LOG;
+    case ItemType::OAK_PLANKS: return BLOCK_TYPE_OAK_PLANKS;
+    case ItemType::BIRCH_LOG: return BLOCK_TYPE_BIRCH_LOG;
+    case ItemType::BIRCH_PLANKS: return BLOCK_TYPE_BIRCH_PLANKS;
+    
+    case ItemType::REDSTONE_LINE: return BLOCK_TYPE_REDSTONE_WIRE_DOT;
+    case ItemType::REDSTONE_TORCH: return BLOCK_TYPE_REDSTONE_TORCH;
+    case ItemType::REDSTONE_BLOCK: return BLOCK_TYPE_REDSTONE_BLOCK;
+    case ItemType::REDSTONE_PISTON: return BLOCK_TYPE_REDSTONE_PISTON;
+    case ItemType::REDSTONE_OBSERVER: return BLOCK_TYPE_REDSTONE_OBSERVER;
+    case ItemType::REDSTONE_LEVER: return BLOCK_TYPE_REDSTONE_LEVER;
+    case ItemType::REDSTONE_LAMP: return BLOCK_TYPE_REDSTONE_LAMP_OFF;
+    case ItemType::REDSTONE_REPEATER: return BLOCK_TYPE_REPEATER_OFF;
+    
+    case ItemType::WHEAT: return BLOCK_TYPE_WHEAT_0;
+    case ItemType::CARROT: return BLOCK_TYPE_CARROTS_0;
+    case ItemType::POTATO: return BLOCK_TYPE_POTATOES_0;
+    case ItemType::BEETROOT: return BLOCK_TYPE_BEETROOTS_0;
+    
+    case ItemType::BONEMEAL: return BLOCK_TYPE_AIR;  
+    
+    default: return BLOCK_TYPE_AIR;
+    }
+}
+
+inline ItemType GetItemTypeFromBlock(BlockType blockType)
+{
+    switch (blockType)
+    {
+    case BLOCK_TYPE_STONE: return ItemType::STONE;
+    case BLOCK_TYPE_DIRT: return ItemType::DIRT;
+    case BLOCK_TYPE_SAND: return ItemType::SAND;
+    case BLOCK_TYPE_GRASS: return ItemType::DIRT;  
+    case BLOCK_TYPE_COBBLESTONE: return ItemType::COBBLESTONE;
+    case BLOCK_TYPE_GLOWSTONE: return ItemType::GLOWSTONE;
+    case BLOCK_TYPE_WATER: return ItemType::WATER;
+    
+    case BLOCK_TYPE_OAK_LOG: return ItemType::OAK_LOG;
+    case BLOCK_TYPE_OAK_PLANKS: return ItemType::OAK_PLANKS;
+    case BLOCK_TYPE_BIRCH_LOG: return ItemType::BIRCH_LOG;
+    case BLOCK_TYPE_BIRCH_PLANKS: return ItemType::BIRCH_PLANKS;
+    
+    case BLOCK_TYPE_REDSTONE_WIRE_DOT:
+    case BLOCK_TYPE_REDSTONE_WIRE_NS:
+    case BLOCK_TYPE_REDSTONE_WIRE_EW:
+    case BLOCK_TYPE_REDSTONE_WIRE_CORNER:
+    case BLOCK_TYPE_REDSTONE_WIRE_CROSS:
+        return ItemType::REDSTONE_LINE;
+    
+    case BLOCK_TYPE_REDSTONE_TORCH:
+    case BLOCK_TYPE_REDSTONE_TORCH_OFF:
+        return ItemType::REDSTONE_TORCH;
+    
+    case BLOCK_TYPE_REDSTONE_BLOCK: return ItemType::REDSTONE_BLOCK;
+    case BLOCK_TYPE_REDSTONE_PISTON:
+    case BLOCK_TYPE_REDSTONE_STICKY_PISTON:
+        return ItemType::REDSTONE_PISTON;
+    
+    case BLOCK_TYPE_REDSTONE_OBSERVER: return ItemType::REDSTONE_OBSERVER;
+    
+    // 作物掉落由 CropSystem 处理
+    case BLOCK_TYPE_WHEAT_0:
+    case BLOCK_TYPE_WHEAT_1:
+    case BLOCK_TYPE_WHEAT_2:
+    case BLOCK_TYPE_WHEAT_3:
+    case BLOCK_TYPE_WHEAT_4:
+    case BLOCK_TYPE_WHEAT_5:
+    case BLOCK_TYPE_WHEAT_6:
+    case BLOCK_TYPE_WHEAT_7:
+        return ItemType::WHEAT;
+    
+    case BLOCK_TYPE_CARROTS_0:
+    case BLOCK_TYPE_CARROTS_1:
+    case BLOCK_TYPE_CARROTS_2:
+    case BLOCK_TYPE_CARROTS_3:
+        return ItemType::CARROT;
+    
+    case BLOCK_TYPE_POTATOES_0:
+    case BLOCK_TYPE_POTATOES_1:
+    case BLOCK_TYPE_POTATOES_2:
+    case BLOCK_TYPE_POTATOES_3:
+        return ItemType::POTATO;
+    
+    case BLOCK_TYPE_BEETROOTS_0:
+    case BLOCK_TYPE_BEETROOTS_1:
+    case BLOCK_TYPE_BEETROOTS_2:
+    case BLOCK_TYPE_BEETROOTS_3:
+        return ItemType::BEETROOT;
+    
+    default: return ItemType::NONE;
+    }
+}
+
+inline std::string ItemTypeToString(ItemType itemType)
+{
+	switch (itemType)
+	{
+	case ItemType::NONE: return "";
+    
+	case ItemType::STONE: return "Stone";
+	case ItemType::DIRT: return "Dirt";
+	case ItemType::SAND: return "Sand";
+	case ItemType::GRASS: return "Grass";
+	case ItemType::COBBLESTONE: return "Cobblestone";
+	case ItemType::GLOWSTONE: return "Glowstone";
+	case ItemType::WATER: return "Water";
+    
+	case ItemType::OAK_LOG: return "OakLog";
+	case ItemType::OAK_PLANKS: return "OakPlanks";
+	case ItemType::BIRCH_LOG: return "BirchLog";
+	case ItemType::BIRCH_PLANKS: return "BirchPlanks";
+    
+	case ItemType::REDSTONE_LINE: return "RedstoneLine";
+	case ItemType::REDSTONE_TORCH: return "RedstoneTorch";
+	case ItemType::REDSTONE_BLOCK: return "RedstoneBlock";
+	case ItemType::REDSTONE_PISTON: return "RedstonePiston";
+	case ItemType::REDSTONE_OBSERVER: return "RedstoneObserver";
+	case ItemType::REDSTONE_LAMP: return "RedstoneLamp";
+	case ItemType::REDSTONE_REPEATER: return "RedstoneRepeater";
+	case ItemType::REDSTONE_LEVER: return "RedstoneLever";
+    
+	case ItemType::WHEAT: return "Wheat";
+	case ItemType::CARROT: return "Carrot";
+	case ItemType::POTATO: return "Potato";
+	case ItemType::BEETROOT: return "Beetroot";
+    
+	case ItemType::BONEMEAL: return "Bonemeal";
+    
+	default: return "";
+	}
+}
