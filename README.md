@@ -1,2 +1,2 @@
-# SimpleMiner
+# RedCraft
 Minecraft style world generation
