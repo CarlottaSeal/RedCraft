@@ -2,6 +2,8 @@
 
 A Minecraft-style voxel game built from scratch in C++ on a custom engine. Procedural world generation, redstone circuits, farming, dynamic weather, and chunk streaming with multithreaded generation.
 
+Demo & more details: https://carlottak16mars.wixsite.com/seal/blank
+
 ## World Generation
 
 Terrain is generated through a multi-stage pipeline:
